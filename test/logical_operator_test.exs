@@ -146,7 +146,11 @@ defmodule Enzyme.LogicalOperatorTest do
 
       # Uppercase names of active admins
       result =
-        Enzyme.transform(data, "users[*][?active == true and role == 'admin'].name", &String.upcase/1)
+        Enzyme.transform(
+          data,
+          "users[*][?active == true and role == 'admin'].name",
+          &String.upcase/1
+        )
 
       assert result == %{
                "users" => [

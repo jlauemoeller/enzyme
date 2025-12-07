@@ -27,13 +27,13 @@ defmodule IsoIntegrationTest do
 
   describe "select with custom isos" do
     test "custom iso with path string" do
-      cents_iso = Iso.new(&(&1 / 100), &(trunc(&1 * 100)))
+      cents_iso = Iso.new(&(&1 / 100), &trunc(&1 * 100))
       data = %{"price" => 1999}
       assert Enzyme.select(data, "price::cents", cents: cents_iso) == 19.99
     end
 
     test "custom iso with pre-parsed lens" do
-      cents_iso = Iso.new(&(&1 / 100), &(trunc(&1 * 100)))
+      cents_iso = Iso.new(&(&1 / 100), &trunc(&1 * 100))
       lens = Enzyme.new("price::cents", cents: cents_iso)
       data = %{"price" => 1999}
       assert Enzyme.select(data, lens) == 19.99
@@ -44,13 +44,13 @@ defmodule IsoIntegrationTest do
       lens = Enzyme.new("price::cents")
       data = %{"price" => 1999}
 
-      cents_iso = Iso.new(&(&1 / 100), &(trunc(&1 * 100)))
+      cents_iso = Iso.new(&(&1 / 100), &trunc(&1 * 100))
       assert Enzyme.select(data, lens, cents: cents_iso) == 19.99
     end
 
     test "runtime opts override stored (parse-time) opts" do
       # Parse-time iso divides by 100
-      stored_iso = Iso.new(&(&1 / 100), &(trunc(&1 * 100)))
+      stored_iso = Iso.new(&(&1 / 100), &trunc(&1 * 100))
       lens = Enzyme.new("price::cents", cents: stored_iso)
       data = %{"price" => 1999}
 
@@ -58,12 +58,12 @@ defmodule IsoIntegrationTest do
       assert Enzyme.select(data, lens) == 19.99
 
       # Runtime iso divides by 1000 - overrides stored iso
-      runtime_iso = Iso.new(&(&1 / 1000), &(trunc(&1 * 1000)))
+      runtime_iso = Iso.new(&(&1 / 1000), &trunc(&1 * 1000))
       assert Enzyme.select(data, lens, cents: runtime_iso) == 1.999
     end
 
     test "runtime opts can override builtin" do
-      custom_integer = Iso.new(&(String.to_integer(&1) * 2), &(Integer.to_string(div(&1, 2))))
+      custom_integer = Iso.new(&(String.to_integer(&1) * 2), &Integer.to_string(div(&1, 2)))
       data = %{"count" => "10"}
 
       # Builtin behavior
@@ -138,16 +138,18 @@ defmodule IsoIntegrationTest do
 
   describe "transform with custom isos" do
     test "custom iso roundtrips correctly" do
-      cents_iso = Iso.new(&(&1 / 100), &(trunc(&1 * 100)))
-      data = %{"price" => 1999}  # $19.99 in cents
+      cents_iso = Iso.new(&(&1 / 100), &trunc(&1 * 100))
+      # $19.99 in cents
+      data = %{"price" => 1999}
 
       # Add $1.00 in dollar space
       result = Enzyme.transform(data, "price::cents", &(&1 + 1), cents: cents_iso)
-      assert result == %{"price" => 2099}  # $20.99 in cents
+      # $20.99 in cents
+      assert result == %{"price" => 2099}
     end
 
     test "transform with pre-parsed lens" do
-      cents_iso = Iso.new(&(&1 / 100), &(trunc(&1 * 100)))
+      cents_iso = Iso.new(&(&1 / 100), &trunc(&1 * 100))
       lens = Enzyme.new("price::cents", cents: cents_iso)
       data = %{"price" => 1999}
 
@@ -172,12 +174,13 @@ defmodule IsoIntegrationTest do
       }
 
       result = Enzyme.transform(data, "users[*].score::integer", &(&1 + 10), [])
+
       assert result == %{
-        "users" => [
-          %{"name" => "Alice", "score" => "95"},
-          %{"name" => "Bob", "score" => "102"}
-        ]
-      }
+               "users" => [
+                 %{"name" => "Alice", "score" => "95"},
+                 %{"name" => "Bob", "score" => "102"}
+               ]
+             }
     end
   end
 
@@ -223,6 +226,7 @@ defmodule IsoIntegrationTest do
 
       # Should fail without runtime opts
       data = %{"name" => "alice"}
+
       assert_raise ArgumentError, ~r/not resolved/, fn ->
         Enzyme.select(data, lens)
       end

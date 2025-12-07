@@ -77,7 +77,7 @@ defmodule FilterIsoTest do
 
   describe "filter with custom isos" do
     test "filter with custom iso provided at runtime" do
-      cents_iso = Iso.new(&(&1 / 100), &(trunc(&1 * 100)))
+      cents_iso = Iso.new(&(&1 / 100), &trunc(&1 * 100))
 
       data = %{
         "items" => [
@@ -93,7 +93,7 @@ defmodule FilterIsoTest do
     end
 
     test "filter with custom iso resolved at parse time" do
-      cents_iso = Iso.new(&(&1 / 100), &(trunc(&1 * 100)))
+      cents_iso = Iso.new(&(&1 / 100), &trunc(&1 * 100))
       lens = Enzyme.new("items[*][?price::cents == 15.99].name", cents: cents_iso)
 
       data = %{
@@ -135,16 +135,19 @@ defmodule FilterIsoTest do
     end
 
     test "isos resolved at parse time are locked in" do
-      iso1 = Iso.new(&(&1 * 2), &(div(&1, 2)))
+      iso1 = Iso.new(&(&1 * 2), &div(&1, 2))
 
       # Iso provided at parse time - gets baked into the lens
       lens = Enzyme.new("items[*][?value::custom == 60].name", custom: iso1)
 
       data = %{
         "items" => [
-          %{"name" => "a", "value" => 30},  # 30 * 2 = 60 ✓
-          %{"name" => "b", "value" => 6},   # 6 * 2 = 12 ✗
-          %{"name" => "c", "value" => 20}   # 20 * 2 = 40 ✗
+          # 30 * 2 = 60 ✓
+          %{"name" => "a", "value" => 30},
+          # 6 * 2 = 12 ✗
+          %{"name" => "b", "value" => 6},
+          # 20 * 2 = 40 ✗
+          %{"name" => "c", "value" => 20}
         ]
       }
 
@@ -154,16 +157,19 @@ defmodule FilterIsoTest do
     end
 
     test "IsoRef can be resolved at runtime" do
-      iso = Iso.new(&(&1 * 10), &(div(&1, 10)))
+      iso = Iso.new(&(&1 * 10), &div(&1, 10))
 
       # No iso provided at parse time - creates IsoRef
       lens = Enzyme.new("items[*][?value::custom == 60].name")
 
       data = %{
         "items" => [
-          %{"name" => "a", "value" => 30},  # 30 * 10 = 300 ✗
-          %{"name" => "b", "value" => 6},   # 6 * 10 = 60 ✓
-          %{"name" => "c", "value" => 20}   # 20 * 10 = 200 ✗
+          # 30 * 10 = 300 ✗
+          %{"name" => "a", "value" => 30},
+          # 6 * 10 = 60 ✓
+          %{"name" => "b", "value" => 6},
+          # 20 * 10 = 200 ✗
+          %{"name" => "c", "value" => 20}
         ]
       }
 
@@ -184,7 +190,13 @@ defmodule FilterIsoTest do
       }
 
       # Double the name of items where count == 15
-      result = Enzyme.transform(data, "items[*][?count::integer == 15].name", &String.duplicate(&1, 2), [])
+      result =
+        Enzyme.transform(
+          data,
+          "items[*][?count::integer == 15].name",
+          &String.duplicate(&1, 2),
+          []
+        )
 
       assert result == %{
                "items" => [
@@ -222,7 +234,8 @@ defmodule FilterIsoTest do
       }
 
       # Items where count == 10 AND status::atom == :active
-      result = Enzyme.select(data, "items[*][?count::integer == 10][?status::atom == :active]", [])
+      result =
+        Enzyme.select(data, "items[*][?count::integer == 10][?status::atom == :active]", [])
 
       assert result == [%{"count" => "10", "status" => "active"}]
     end
@@ -327,7 +340,9 @@ defmodule FilterIsoTest do
       }
 
       # count >= '10'::integer AND active == true
-      result = Enzyme.select(data, "items[*][?count >= '10'::integer and active == true].name", [])
+      result =
+        Enzyme.select(data, "items[*][?count >= '10'::integer and active == true].name", [])
+
       assert result == ["b"]
     end
 
@@ -341,7 +356,10 @@ defmodule FilterIsoTest do
 
       # Convert boolean literal to string for comparison
       bool_to_str = Iso.new(&Atom.to_string/1, &String.to_atom/1)
-      result = Enzyme.select(data, "items[*][?flag == true::bool_str].name", bool_str: bool_to_str)
+
+      result =
+        Enzyme.select(data, "items[*][?flag == true::bool_str].name", bool_str: bool_to_str)
+
       assert result == ["a"]
     end
 
@@ -355,7 +373,10 @@ defmodule FilterIsoTest do
 
       # Compare string field to atom literal converted to string
       atom_to_str = Iso.new(&Atom.to_string/1, &String.to_atom/1)
-      result = Enzyme.select(data, "items[*][?status == :active::atom_str].name", atom_str: atom_to_str)
+
+      result =
+        Enzyme.select(data, "items[*][?status == :active::atom_str].name", atom_str: atom_to_str)
+
       assert result == ["a"]
     end
 
@@ -369,7 +390,8 @@ defmodule FilterIsoTest do
       }
 
       # Uppercase names where count > '10' converted to integer
-      result = Enzyme.transform(data, "items[*][?count > '10'::integer].name", &String.upcase/1, [])
+      result =
+        Enzyme.transform(data, "items[*][?count > '10'::integer].name", &String.upcase/1, [])
 
       assert result == %{
                "items" => [
@@ -397,7 +419,7 @@ defmodule FilterIsoTest do
     end
 
     test "expression parser always creates IsoRef (resolution at runtime)" do
-      iso = Iso.new(&(&1), &(&1))
+      iso = Iso.new(& &1, & &1)
       expr = Enzyme.ExpressionParser.parse("field::custom == 42", custom: iso)
 
       # Even with opts, isos are stored as IsoRef (resolved at runtime)
