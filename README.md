@@ -2,8 +2,7 @@
 
 A powerful Elixir library for querying and transforming deeply nested data structures using an expressive path syntax.
 
-[![CI](https://github.com/jlauemoeller/enzyme/actions/workflows/ci.yml/badge.svg)](https://github.com/jl
-auemoeller/enzyme/actions/workflows/ci.yml)
+[![CI](https://github.com/jlauemoeller/enzyme/actions/workflows/ci.yml/badge.svg)](https://github.com/jlauemoeller/enzyme/actions/workflows/ci.yml)
 
 ## Overview
 
