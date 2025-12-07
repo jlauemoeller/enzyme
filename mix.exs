@@ -6,7 +6,7 @@ defmodule Enzyme.MixProject do
     [
       app: :enzyme,
       version: "0.1.0",
-      elixir: "~> 1.18",
+      elixir: "~> 1.17",
       description:
         "A powerful Elixir library for querying and transforming deeply nested data structures using an expressive path syntax.",
       package: package(),
