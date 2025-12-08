@@ -709,9 +709,6 @@ defmodule Enzyme.Parser do
   # Parse optional prism retagging: -> :tag or -> {:tag, assembly}
   defp parse_prism_retag(prism, input) do
     case String.trim_leading(input) do
-      " -> " <> rest ->
-        parse_prism_output(prism, rest)
-
       "->" <> rest ->
         parse_prism_output(prism, rest)
 
