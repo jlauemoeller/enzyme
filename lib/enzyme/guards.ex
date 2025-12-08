@@ -35,5 +35,7 @@ defmodule Enzyme.Guards do
 
   @doc false
   defguard is_wrapped(value)
-           when is_tuple(value) and elem(value, 0) in [:single, :many]
+           when is_struct(value, Enzyme.Single) or
+                  is_struct(value, Enzyme.Many) or
+                  is_struct(value, Enzyme.None)
 end

@@ -45,26 +45,26 @@ defmodule Enzyme.Prism do
       # Create a prism for {:ok, value} tuples
       iex> prism = Enzyme.Prism.new(:ok, [:value])
       iex> Enzyme.Prism.select(prism, {:ok, 5})
-      {:single, 5}
+      %Enzyme.Single{value: 5}
 
       iex> prism = Enzyme.Prism.new(:ok, [:value])
       iex> Enzyme.Prism.select(prism, {:error, "oops"})
-      {:single, nil}
+      %Enzyme.None{}
 
       # Create a prism that extracts multiple values
       iex> prism = Enzyme.Prism.new(:rectangle, [:w, :h])
       iex> Enzyme.Prism.select(prism, {:rectangle, 3, 4})
-      {:single, {3, 4}}
+      %Enzyme.Single{value: {3, 4}}
 
       # Create a prism that ignores some positions
       iex> prism = Enzyme.Prism.new(:rectangle, [nil, :h])
       iex> Enzyme.Prism.select(prism, {:rectangle, 3, 4})
-      {:single, 4}
+      %Enzyme.Single{value: 4}
 
       # Filter-only prism (all positions ignored)
       iex> prism = Enzyme.Prism.new(:ok, [nil])
       iex> Enzyme.Prism.select(prism, {:ok, 5})
-      {:single, {:ok, 5}}
+      %Enzyme.Single{value: {:ok, 5}}
 
       # Retag with shorthand syntax (use the high-level Enzyme API)
       iex> Enzyme.select({:ok, 42}, ":{:ok, v} -> :success")
@@ -78,12 +78,13 @@ defmodule Enzyme.Prism do
 
   defstruct [:tag, :pattern, :rest, :output_tag, :output_pattern]
 
-  alias Enzyme.Prism
-
   import Enzyme.Guards
   import Enzyme.Wraps
 
-  @type t :: %__MODULE__{
+  alias Enzyme.Prism
+  alias Enzyme.Types
+
+  @type t :: %Prism{
           tag: atom(),
           pattern: list() | nil,
           rest: boolean(),
@@ -111,12 +112,12 @@ defmodule Enzyme.Prism do
 
   """
 
-  @spec new(atom(), :...) :: t()
+  @spec new(atom(), list() | :...) :: Prism.t()
   def new(tag, :...) when is_atom(tag) do
     %Prism{tag: tag, pattern: nil, rest: true}
   end
 
-  @spec new(atom(), list()) :: t()
+  @spec new(atom(), list() | :...) :: Prism.t()
   def new(tag, pattern) when is_atom(tag) and is_list(pattern) do
     %Prism{tag: tag, pattern: pattern, rest: false}
   end
@@ -124,29 +125,29 @@ defmodule Enzyme.Prism do
   @doc """
   Selects and extracts values from a tagged tuple if it matches the prism.
 
-  Returns `{:single, value}` or `{:many, list}` wrapped results.
+  Returns `%Enzyme.Single{value: value}` or `%Enzyme.Many{values: list}` wrapped
+  results.
 
-  For non-matching tuples, returns `{:single, nil}` or filters them out of lists.
+  For non-matching tuples, returns `%Enzyme.None{}` or filters them out of lists.
   """
 
-  @spec select(t(), {:single, any()} | {:many, list()} | any()) ::
-          {:single, any()} | {:many, list()}
-  def select(%Prism{} = prism, {:single, value}) do
+  @spec select(Prism.t(), Types.collection() | Types.wrapped()) :: Types.wrapped()
+
+  def select(%Prism{} = prism, %Enzyme.Single{value: value}) do
     select(prism, value)
   end
 
-  def select(%Prism{} = prism, {:many, collection}) when is_list(collection) do
-    # For {:many, list}, filter out non-matching items (don't include nils)
+  def select(%Prism{} = prism, %Enzyme.Many{values: collection}) when is_list(collection) do
     results =
       collection
       |> Enum.map(&select(prism, &1))
       |> Enum.filter(fn
-        {:single, nil} -> false
+        %Enzyme.None{} -> false
         _ -> true
       end)
       |> Enum.map(&unwrap/1)
 
-    {:many, results}
+    many(results)
   end
 
   def select(%Prism{} = prism, list) when is_list(list) do
@@ -154,21 +155,21 @@ defmodule Enzyme.Prism do
       list
       |> Enum.map(&select(prism, &1))
       |> Enum.filter(fn
-        {:single, nil} -> false
+        %Enzyme.None{} -> false
         _ -> true
       end)
       |> Enum.map(&unwrap/1)
 
-    {:many, results}
+    many(results)
   end
 
   def select(%Prism{tag: tag, rest: true} = prism, tuple)
       when is_tuple(tuple) and tuple_size(tuple) >= 1 do
     if elem(tuple, 0) == tag do
       extracted = extract_rest(tuple)
-      {:single, apply_output_assembly(prism, extracted, tuple)}
+      single(apply_output_assembly(prism, extracted, tuple))
     else
-      {:single, nil}
+      none()
     end
   end
 
@@ -176,14 +177,14 @@ defmodule Enzyme.Prism do
       when is_tuple(tuple) and tuple_size(tuple) >= 1 do
     if elem(tuple, 0) == tag and tuple_size(tuple) == length(pattern) + 1 do
       extracted = extract_pattern(tuple, pattern)
-      {:single, apply_output_assembly(prism, extracted, tuple)}
+      single(apply_output_assembly(prism, extracted, tuple))
     else
-      {:single, nil}
+      none()
     end
   end
 
   def select(%Prism{}, _other) do
-    {:single, nil}
+    none()
   end
 
   @doc """
@@ -193,13 +194,17 @@ defmodule Enzyme.Prism do
   The transform function receives the extracted value(s) and should return
   the new value(s) in the same shape.
   """
+
+  @spec transform(Prism.t(), Types.collection() | Types.wrapped(), (any() -> any())) ::
+          Types.wrapped()
+
   def transform(%Prism{} = prism, wrapped, fun)
       when is_wrapped(wrapped) and is_transform(fun) do
     transform_wrapped(wrapped, fun, &transform(prism, &1, &2))
   end
 
   def transform(%Prism{} = prism, list, fun) when is_list(list) and is_transform(fun) do
-    {:many, Enum.map(list, fn item -> unwrap(transform(prism, item, fun)) end)}
+    many(Enum.map(list, fn item -> unwrap(transform(prism, item, fun)) end))
   end
 
   def transform(%Prism{tag: tag, rest: true} = prism, tuple, fun)
@@ -208,9 +213,9 @@ defmodule Enzyme.Prism do
       extracted = extract_rest(tuple)
       transformed = fun.(extracted)
       output_tag = prism.output_tag || tag
-      {:single, rebuild_rest(output_tag, transformed, tuple_size(tuple) - 1, prism)}
+      single(rebuild_rest(output_tag, transformed, tuple_size(tuple) - 1, prism))
     else
-      {:single, tuple}
+      single(tuple)
     end
   end
 
@@ -221,19 +226,19 @@ defmodule Enzyme.Prism do
 
       if filter_only?(pattern) do
         # Filter-only: transform receives whole tuple, retagging if needed
-        {:single, maybe_retag_tuple(fun.(tuple), prism.output_tag)}
+        single(maybe_retag_tuple(fun.(tuple), prism.output_tag))
       else
         transformed = fun.(extracted)
         output_tag = prism.output_tag || tag
-        {:single, rebuild_pattern(output_tag, tuple, pattern, transformed, prism)}
+        single(rebuild_pattern(output_tag, tuple, pattern, transformed, prism))
       end
     else
-      {:single, tuple}
+      single(tuple)
     end
   end
 
   def transform(%Prism{}, other, _fun) do
-    {:single, other}
+    single(other)
   end
 
   # Extract all elements after the tag

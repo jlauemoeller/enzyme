@@ -8,32 +8,38 @@ defmodule Enzyme.Sequence do
 
   defstruct lenses: [], opts: []
 
-  alias Enzyme.Protocol
-  alias Enzyme.Sequence
-
   import Enzyme.Guards
   import Enzyme.Wraps
 
-  @type collection :: list() | map() | tuple()
+  alias Enzyme.Protocol
+  alias Enzyme.Sequence
+  alias Enzyme.Types
 
-  @type t :: %__MODULE__{
+  @type t :: %Sequence{
           lenses: list(any()),
           opts: list({atom(), any()})
         }
 
   @doc """
-  Selects elements from a collection by applying each lens in sequence.
+  Selects elements from a collection by applying each lens in sequence. Returns
+  the value selected by the last lens in the sequence.
   """
-  @spec select(t(), collection()) :: any()
+
+  @spec select(Sequence.t(), Types.collection() | Types.wrapped()) :: Types.wrapped()
+
   def select(%Sequence{lenses: lenses}, collection) when is_collection(collection) do
     select_next(collection, lenses)
   end
 
   @doc """
   Transforms elements in a collection by applying each lens in sequence.
+  The transform function is applied to the values selected by the last lens
+  in the sequence.
   """
 
-  @spec transform(t(), collection(), (any() -> any())) :: any()
+  @spec transform(Sequence.t(), Types.collection() | Types.wrapped(), (any() -> any())) ::
+          Types.wrapped()
+
   def transform(%Sequence{lenses: lenses}, collection, transform)
       when is_collection(collection) and is_transform(transform) do
     transform_next(collection, lenses, transform)
@@ -66,6 +72,12 @@ defmodule Enzyme.Sequence do
 end
 
 defimpl Enzyme.Protocol, for: Enzyme.Sequence do
-  def select(lens, collection), do: Enzyme.Sequence.select(lens, collection)
-  def transform(lens, collection, fun), do: Enzyme.Sequence.transform(lens, collection, fun)
+  alias Enzyme.Types
+  alias Enzyme.Sequence
+
+  @spec select(Sequence.t(), Types.collection() | Types.wrapped()) :: any()
+  def select(lens, collection), do: Sequence.select(lens, collection)
+
+  @spec transform(Sequence.t(), Types.collection() | Types.wrapped(), (any() -> any())) :: any()
+  def transform(lens, collection, fun), do: Sequence.transform(lens, collection, fun)
 end

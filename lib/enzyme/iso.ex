@@ -62,12 +62,13 @@ defmodule Enzyme.Iso do
 
   defstruct [:forward, :backward]
 
-  alias Enzyme.Iso
-
   import Enzyme.Guards
   import Enzyme.Wraps
 
-  @type t :: %__MODULE__{
+  alias Enzyme.Iso
+  alias Enzyme.Types
+
+  @type t :: %Iso{
           forward: (any() -> any()),
           backward: (any() -> any())
         }
@@ -87,7 +88,8 @@ defmodule Enzyme.Iso do
         fn dollars -> trunc(dollars * 100) end)
 
   """
-  @spec new((any() -> any()), (any() -> any())) :: t()
+
+  @spec new((any() -> any()), (any() -> any())) :: Iso.t()
   def new(forward, backward)
       when is_function(forward, 1) and is_function(backward, 1) do
     %Iso{forward: forward, backward: backward}
@@ -96,46 +98,52 @@ defmodule Enzyme.Iso do
   @doc """
   Selects by applying the forward transformation.
   """
-  @spec select(t(), {:single, any()}) :: {:single, any()}
-  def select(%Iso{} = iso, {:single, value}) do
+
+  @spec select(Iso.t(), Types.collection() | Types.wrapped()) :: Types.wrapped()
+
+  def select(%Iso{} = iso, %Enzyme.Single{value: value}) do
     select(iso, value)
   end
 
-  @spec select(t(), {:many, list()}) :: {:many, list()}
-  def select(%Iso{} = iso, {:many, collection}) when is_list(collection) do
-    {:many, Enum.map(collection, fn item -> unwrap(select(iso, item)) end)}
+  def select(%Iso{} = iso, %Enzyme.Many{values: collection}) when is_list(collection) do
+    many(Enum.map(collection, fn item -> unwrap(select(iso, item)) end))
   end
 
-  @spec select(t(), any()) :: {:single, any()}
   def select(%Iso{forward: fwd}, value) do
-    {:single, fwd.(value)}
+    single(fwd.(value))
   end
 
   @doc """
   Transforms by applying forward, the transform function, then backward.
   """
 
-  @spec transform(t(), {:single, any()}, (any() -> any())) :: {:single, any()}
-  def transform(%Iso{} = iso, {:single, value}, fun) when is_transform(fun) do
+  @spec transform(Iso.t(), Types.collection() | Types.wrapped(), (any() -> any())) ::
+          Types.wrapped()
+
+  def transform(%Iso{} = iso, %Enzyme.Single{value: value}, fun) when is_transform(fun) do
     transform(iso, value, fun)
   end
 
-  @spec transform(t(), {:many, list()}, (any() -> any())) :: {:many, list()}
-  def transform(%Iso{} = iso, {:many, collection}, fun)
+  def transform(%Iso{} = iso, %Enzyme.Many{values: collection}, fun)
       when is_list(collection) and is_transform(fun) do
-    {:many, Enum.map(collection, fn item -> unwrap(transform(iso, item, fun)) end)}
+    many(Enum.map(collection, fn item -> unwrap(transform(iso, item, fun)) end))
   end
 
-  @spec transform(t(), any(), (any() -> any())) :: {:single, any()}
   def transform(%Iso{forward: fwd, backward: bwd}, value, fun) when is_transform(fun) do
     working = fwd.(value)
     transformed = fun.(working)
     result = bwd.(transformed)
-    {:single, result}
+    single(result)
   end
 end
 
 defimpl Enzyme.Protocol, for: Enzyme.Iso do
-  def select(iso, collection), do: Enzyme.Iso.select(iso, collection)
-  def transform(iso, collection, fun), do: Enzyme.Iso.transform(iso, collection, fun)
+  alias Enzyme.Types
+  alias Enzyme.Iso
+
+  @spec select(Iso.t(), Types.collection() | Types.wrapped()) :: any()
+  def select(lens, collection), do: Iso.select(lens, collection)
+
+  @spec transform(Iso.t(), Types.collection() | Types.wrapped(), (any() -> any())) :: any()
+  def transform(lens, collection, fun), do: Iso.transform(lens, collection, fun)
 end

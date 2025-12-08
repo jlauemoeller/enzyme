@@ -9,16 +9,14 @@ defprotocol Enzyme.Protocol do
   @doc """
   Selects elements from a collection based on the lens.
 
-  Returns a wrapped value: `{:single, value}` or `{:many, list}`.
+  Returns a wrapped value: `%Enzyme.Single{}` or `%Enzyme.Many{}`.
   """
-  @spec select(t, any()) :: {:single, any()} | {:many, list()}
   def select(lens, collection)
 
   @doc """
   Transforms elements in a collection based on the lens.
 
-  Returns a wrapped value: `{:single, value}` or `{:many, list}`.
+  Returns a wrapped value: `%Enzyme.Single{}` or `%Enzyme.Many{}`.
   """
-  @spec transform(t, any(), (any() -> any())) :: {:single, any()} | {:many, list()}
   def transform(lens, collection, fun)
 end

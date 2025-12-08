@@ -1,5 +1,8 @@
 defmodule IsoTest do
+  @moduledoc false
   use ExUnit.Case, async: true
+
+  import Enzyme.Wraps
 
   alias Enzyme.Iso
   alias Enzyme.IsoRef
@@ -28,12 +31,12 @@ defmodule IsoTest do
   describe "Iso.select/2" do
     test "applies forward transformation to single value" do
       iso = Iso.new(&(&1 * 2), &div(&1, 2))
-      assert Iso.select(iso, {:single, 5}) == {:single, 10}
+      assert Iso.select(iso, single(5)) == single(10)
     end
 
     test "applies forward transformation to each item in many" do
       iso = Iso.new(&(&1 * 2), &div(&1, 2))
-      assert Iso.select(iso, {:many, [1, 2, 3]}) == {:many, [2, 4, 6]}
+      assert Iso.select(iso, many([1, 2, 3])) == many([2, 4, 6])
     end
   end
 
@@ -43,19 +46,19 @@ defmodule IsoTest do
       iso = Iso.new(&(&1 / 100), &trunc(&1 * 100))
 
       # Transform adds $1 (in dollars space), stored back in cents
-      result = Iso.transform(iso, {:single, 500}, &(&1 + 1))
+      result = Iso.transform(iso, single(500), &(&1 + 1))
       # 500 cents -> $5 -> $6 -> 600 cents
-      assert result == {:single, 600}
+      assert result == single(600)
     end
 
     test "transforms each item in many" do
       iso = Iso.new(&(&1 * 2), &div(&1, 2))
 
-      result = Iso.transform(iso, {:many, [2, 4, 6]}, &(&1 + 10))
+      result = Iso.transform(iso, many([2, 4, 6]), &(&1 + 10))
       # 2 -> 4 -> 14 -> 7
       # 4 -> 8 -> 18 -> 9
       # 6 -> 12 -> 22 -> 11
-      assert result == {:many, [7, 9, 11]}
+      assert result == many([7, 9, 11])
     end
   end
 end
