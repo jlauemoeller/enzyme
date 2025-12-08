@@ -1,0 +1,145 @@
+defmodule Enzyme.RegressionTest do
+  @moduledoc false
+  use ExUnit.Case
+  doctest Enzyme
+
+  describe "regression test 1" do
+    setup do
+      data = [
+        %{"label1" => [%{unit: "a", item: "1"}, %{unit: "b", item: "2"}]},
+        %{"label2" => [%{unit: "a", item: "1"}, %{unit: "b", item: "2"}]},
+        %{"label3" => [%{unit: "a", item: "1"}, %{unit: "b", item: "2"}]}
+      ]
+
+      [data: data]
+    end
+
+    test "does not return nil for elements that do not match", %{data: data} do
+      assert Enzyme.select(data, "[*][label3]") == [
+               [%{unit: "a", item: "1"}, %{unit: "b", item: "2"}]
+             ]
+    end
+
+    test "does not produce nil values for elements that do not match", %{data: data} do
+      assert Enzyme.transform(data, "[*][label3]", fn list ->
+               Enum.map(list, &Map.take(&1, [:item]))
+             end) == [
+               %{"label1" => [%{unit: "a", item: "1"}, %{unit: "b", item: "2"}]},
+               %{"label2" => [%{unit: "a", item: "1"}, %{unit: "b", item: "2"}]},
+               %{"label3" => [%{item: "1"}, %{item: "2"}]}
+             ]
+    end
+  end
+
+  describe "regression test 2" do
+    setup do
+      data = %{
+        field: "field",
+        cards: %{
+          "A" => %{
+            "label1" => [
+              %{item: "1", unit: nil},
+              %{item: "2", unit: nil}
+            ]
+          },
+          "B" => %{
+            "label2" => [
+              %{item: "1", unit: nil},
+              %{item: "2", unit: nil}
+            ]
+          },
+          "C" => %{
+            "label3" => [
+              %{item: "1", unit: nil},
+              %{item: "2", unit: nil}
+            ]
+          }
+        }
+      }
+
+      [data: data]
+    end
+
+    test "does not produce nil values for elements that do not match", %{data: data} do
+      actual = Enzyme.select(data, ":cards[*][label3]")
+      expected = [[%{unit: nil, item: "1"}, %{unit: nil, item: "2"}]]
+
+      assert actual == expected
+    end
+  end
+
+  describe "Selecting and transforming through multiple [*] levels" do
+    setup do
+      data = %{
+        "company" => "Acme Corp",
+        "departments" => [
+          %{
+            "name" => "Engineering",
+            "employees" => [
+              %{"name" => "Alice", "title" => "Senior Engineer"},
+              %{"name" => "Bob", "title" => "Junior Engineer"}
+            ]
+          },
+          %{
+            "name" => "Sales",
+            "employees" => [
+              %{"name" => "Charlie", "title" => "Sales Manager"}
+            ]
+          }
+        ]
+      }
+
+      [data: data]
+    end
+
+    test "selecting through multiple [*] levels", %{data: data} do
+      assert Enzyme.select(data, "departments[*].employees[*].name") == [
+               ["Alice", "Bob"],
+               ["Charlie"]
+             ]
+    end
+
+    test "selecting through multiple [*] levels with filtering", %{data: data} do
+      assert Enzyme.select(data, "departments[*][?name == 'Engineering'].employees[*].name") == [
+               ["Alice", "Bob"]
+             ]
+    end
+
+    test "transforming through multiple [*] levels", %{data: data} do
+      updated = Enzyme.transform(data, "departments[*].employees[*].title", &String.upcase/1)
+
+      expected = %{
+        "company" => "Acme Corp",
+        "departments" => [
+          %{
+            "name" => "Engineering",
+            "employees" => [
+              %{"name" => "Alice", "title" => "SENIOR ENGINEER"},
+              %{"name" => "Bob", "title" => "JUNIOR ENGINEER"}
+            ]
+          },
+          %{
+            "name" => "Sales",
+            "employees" => [
+              %{"name" => "Charlie", "title" => "SALES MANAGER"}
+            ]
+          }
+        ]
+      }
+
+      assert updated == expected
+    end
+  end
+
+  @tag :skip
+  describe "Prism transform with assembly" do
+    test "only the extracted parts are passed to the transform function" do
+      assert {:point2d, 2, 4} ==
+               Enzyme.transform(
+                 {:point3d, 1, 2, 3},
+                 ":{:point3d, x, y, z} -> :{:point2d, x, z}",
+                 fn {x, z} -> {x + 1, z + 1} end
+               )
+    end
+  end
+end

@@ -3,6 +3,8 @@ defmodule Enzyme.PrismTest do
   use ExUnit.Case
   doctest Enzyme.Prism
 
+  import Enzyme.Wraps
+
   alias Enzyme.Prism
 
   # These tests use the internal Prism.select/2 and Prism.transform/3 functions
@@ -23,95 +25,95 @@ defmodule Enzyme.PrismTest do
   describe "Prism.select/2 - single value extraction" do
     test "extracts single value from matching tuple" do
       prism = Prism.new(:ok, [:value])
-      assert Prism.select(prism, {:ok, 5}) == {:single, 5}
+      assert Prism.select(prism, {:ok, 5}) == single(5)
     end
 
     test "returns nil for non-matching tag" do
       prism = Prism.new(:ok, [:value])
-      assert Prism.select(prism, {:error, "oops"}) == {:single, nil}
+      assert Prism.select(prism, {:error, "oops"}) == none()
     end
 
     test "returns nil for wrong arity" do
       prism = Prism.new(:ok, [:value])
-      assert Prism.select(prism, {:ok, 1, 2}) == {:single, nil}
+      assert Prism.select(prism, {:ok, 1, 2}) == none()
     end
 
     test "returns nil for non-tuple" do
       prism = Prism.new(:ok, [:value])
-      assert Prism.select(prism, "not a tuple") == {:single, nil}
+      assert Prism.select(prism, "not a tuple") == none()
     end
 
     test "extracts value from nested map" do
       prism = Prism.new(:ok, [:value])
-      assert Prism.select(prism, {:ok, %{"name" => "Alice"}}) == {:single, %{"name" => "Alice"}}
+      assert Prism.select(prism, {:ok, %{"name" => "Alice"}}) == single(%{"name" => "Alice"})
     end
   end
 
   describe "Prism.select/2 - multiple value extraction" do
     test "extracts multiple values as tuple" do
       prism = Prism.new(:rectangle, [:w, :h])
-      assert Prism.select(prism, {:rectangle, 3, 4}) == {:single, {3, 4}}
+      assert Prism.select(prism, {:rectangle, 3, 4}) == single({3, 4})
     end
 
     test "extracts three values as tuple" do
       prism = Prism.new(:point3d, [:x, :y, :z])
-      assert Prism.select(prism, {:point3d, 1, 2, 3}) == {:single, {1, 2, 3}}
+      assert Prism.select(prism, {:point3d, 1, 2, 3}) == single({1, 2, 3})
     end
   end
 
   describe "Prism.select/2 - partial extraction with _" do
     test "ignores position marked with nil" do
       prism = Prism.new(:rectangle, [nil, :h])
-      assert Prism.select(prism, {:rectangle, 3, 4}) == {:single, 4}
+      assert Prism.select(prism, {:rectangle, 3, 4}) == single(4)
     end
 
     test "ignores first position" do
       prism = Prism.new(:point3d, [nil, :y, nil])
-      assert Prism.select(prism, {:point3d, 1, 2, 3}) == {:single, 2}
+      assert Prism.select(prism, {:point3d, 1, 2, 3}) == single(2)
     end
 
     test "extracts non-contiguous positions as tuple" do
       prism = Prism.new(:quad, [:a, nil, :c, nil])
-      assert Prism.select(prism, {:quad, 1, 2, 3, 4}) == {:single, {1, 3}}
+      assert Prism.select(prism, {:quad, 1, 2, 3, 4}) == single({1, 3})
     end
   end
 
   describe "Prism.select/2 - filter only (all nils)" do
     test "returns original tuple when all positions are nil" do
       prism = Prism.new(:ok, [nil])
-      assert Prism.select(prism, {:ok, 5}) == {:single, {:ok, 5}}
+      assert Prism.select(prism, {:ok, 5}) == single({:ok, 5})
     end
 
     test "returns original tuple for multi-element filter" do
       prism = Prism.new(:rectangle, [nil, nil])
-      assert Prism.select(prism, {:rectangle, 3, 4}) == {:single, {:rectangle, 3, 4}}
+      assert Prism.select(prism, {:rectangle, 3, 4}) == single({:rectangle, 3, 4})
     end
 
     test "returns nil for non-matching filter-only prism" do
       prism = Prism.new(:ok, [nil])
-      assert Prism.select(prism, {:error, "x"}) == {:single, nil}
+      assert Prism.select(prism, {:error, "x"}) == none()
     end
   end
 
   describe "Prism.select/2 - rest pattern (...)" do
     test "extracts single element after tag" do
       prism = Prism.new(:ok, :...)
-      assert Prism.select(prism, {:ok, 5}) == {:single, 5}
+      assert Prism.select(prism, {:ok, 5}) == single(5)
     end
 
     test "extracts multiple elements as tuple" do
       prism = Prism.new(:rectangle, :...)
-      assert Prism.select(prism, {:rectangle, 3, 4}) == {:single, {3, 4}}
+      assert Prism.select(prism, {:rectangle, 3, 4}) == single({3, 4})
     end
 
     test "extracts many elements as tuple" do
       prism = Prism.new(:data, :...)
-      assert Prism.select(prism, {:data, 1, 2, 3, 4}) == {:single, {1, 2, 3, 4}}
+      assert Prism.select(prism, {:data, 1, 2, 3, 4}) == single({1, 2, 3, 4})
     end
 
     test "returns empty tuple for tag-only tuple" do
       prism = Prism.new(:empty, :...)
-      assert Prism.select(prism, {:empty}) == {:single, {}}
+      assert Prism.select(prism, {:empty}) == single({})
     end
   end
 
@@ -128,7 +130,7 @@ defmodule Enzyme.PrismTest do
           {:ok, 3}
         ])
 
-      assert result == {:many, [1, 2, 3]}
+      assert result == many([1, 2, 3])
     end
 
     test "returns empty list when no matches" do
@@ -140,7 +142,7 @@ defmodule Enzyme.PrismTest do
           {:error, "b"}
         ])
 
-      assert result == {:many, []}
+      assert result == many([])
     end
 
     test "extracts tuples from matching items" do
@@ -154,43 +156,43 @@ defmodule Enzyme.PrismTest do
           {:rectangle, 5, 6}
         ])
 
-      assert result == {:many, [{3, 4}, {5, 6}]}
+      assert result == many([{3, 4}, {5, 6}])
     end
   end
 
   describe "Prism.select/2 - wrapped values" do
-    test "handles {:single, tuple}" do
+    test "handles %Enzyme.Single{}" do
       prism = Prism.new(:ok, [:value])
-      assert Prism.select(prism, {:single, {:ok, 42}}) == {:single, 42}
+      assert Prism.select(prism, single({:ok, 42})) == single(42)
     end
 
-    test "handles {:many, list}" do
+    test "handles %Enzyme.Many{}" do
       prism = Prism.new(:ok, [:value])
 
-      result = Prism.select(prism, {:many, [{:ok, 1}, {:error, "x"}, {:ok, 2}]})
-      assert result == {:many, [1, 2]}
+      result = Prism.select(prism, many([{:ok, 1}, {:error, "x"}, {:ok, 2}]))
+      assert result == many([1, 2])
     end
   end
 
   describe "Prism.transform/3 - basic transforms" do
     test "transforms matching tuple" do
       prism = Prism.new(:ok, [:value])
-      assert Prism.transform(prism, {:ok, 5}, &(&1 * 2)) == {:single, {:ok, 10}}
+      assert Prism.transform(prism, {:ok, 5}, &(&1 * 2)) == single({:ok, 10})
     end
 
     test "leaves non-matching tuple unchanged" do
       prism = Prism.new(:ok, [:value])
-      assert Prism.transform(prism, {:error, "x"}, &(&1 * 2)) == {:single, {:error, "x"}}
+      assert Prism.transform(prism, {:error, "x"}, &(&1 * 2)) == single({:error, "x"})
     end
 
     test "leaves wrong arity unchanged" do
       prism = Prism.new(:ok, [:value])
-      assert Prism.transform(prism, {:ok, 1, 2}, &(&1 * 2)) == {:single, {:ok, 1, 2}}
+      assert Prism.transform(prism, {:ok, 1, 2}, &(&1 * 2)) == single({:ok, 1, 2})
     end
 
     test "leaves non-tuple unchanged" do
       prism = Prism.new(:ok, [:value])
-      assert Prism.transform(prism, "not a tuple", &String.upcase/1) == {:single, "not a tuple"}
+      assert Prism.transform(prism, "not a tuple", &String.upcase/1) == single("not a tuple")
     end
   end
 
@@ -201,7 +203,7 @@ defmodule Enzyme.PrismTest do
       transform_fn = fn {w, h} -> {w * 2, h * 2} end
 
       assert Prism.transform(prism, {:rectangle, 3, 4}, transform_fn) ==
-               {:single, {:rectangle, 6, 8}}
+               single({:rectangle, 6, 8})
     end
 
     test "transforms three values" do
@@ -209,7 +211,7 @@ defmodule Enzyme.PrismTest do
       transform_fn = fn {x, y, z} -> {x + 1, y + 1, z + 1} end
 
       assert Prism.transform(prism, {:point3d, 0, 0, 0}, transform_fn) ==
-               {:single, {:point3d, 1, 1, 1}}
+               single({:point3d, 1, 1, 1})
     end
   end
 
@@ -218,7 +220,7 @@ defmodule Enzyme.PrismTest do
       prism = Prism.new(:rectangle, [nil, :h])
       # Only h is extracted, transform receives just h
       assert Prism.transform(prism, {:rectangle, 3, 4}, &(&1 * 2)) ==
-               {:single, {:rectangle, 3, 8}}
+               single({:rectangle, 3, 8})
     end
 
     test "transforms non-contiguous positions" do
@@ -227,7 +229,7 @@ defmodule Enzyme.PrismTest do
       transform_fn = fn {a, c} -> {a * 10, c * 10} end
 
       assert Prism.transform(prism, {:quad, 1, 2, 3, 4}, transform_fn) ==
-               {:single, {:quad, 10, 2, 30, 4}}
+               single({:quad, 10, 2, 30, 4})
     end
   end
 
@@ -236,14 +238,14 @@ defmodule Enzyme.PrismTest do
       prism = Prism.new(:ok, [nil])
       # Transform receives the whole tuple
       transform_fn = fn {:ok, v} -> {:ok, v * 2} end
-      assert Prism.transform(prism, {:ok, 5}, transform_fn) == {:single, {:ok, 10}}
+      assert Prism.transform(prism, {:ok, 5}, transform_fn) == single({:ok, 10})
     end
   end
 
   describe "Prism.transform/3 - rest pattern transforms" do
     test "transforms single element after tag" do
       prism = Prism.new(:ok, :...)
-      assert Prism.transform(prism, {:ok, 5}, &(&1 * 2)) == {:single, {:ok, 10}}
+      assert Prism.transform(prism, {:ok, 5}, &(&1 * 2)) == single({:ok, 10})
     end
 
     test "transforms multiple elements as tuple" do
@@ -251,7 +253,7 @@ defmodule Enzyme.PrismTest do
       transform_fn = fn {w, h} -> {w * 2, h * 2} end
 
       assert Prism.transform(prism, {:rectangle, 3, 4}, transform_fn) ==
-               {:single, {:rectangle, 6, 8}}
+               single({:rectangle, 6, 8})
     end
   end
 
@@ -262,7 +264,7 @@ defmodule Enzyme.PrismTest do
       result =
         Prism.transform(prism, [{:ok, 1}, {:error, "x"}, {:ok, 2}], &(&1 * 10))
 
-      assert result == {:many, [{:ok, 10}, {:error, "x"}, {:ok, 20}]}
+      assert result == many([{:ok, 10}, {:error, "x"}, {:ok, 20}])
     end
 
     test "transforms multiple extracted values in list" do
@@ -276,21 +278,21 @@ defmodule Enzyme.PrismTest do
           transform_fn
         )
 
-      assert result == {:many, [{:circle, 5}, {:rectangle, 6, 8}, {:rectangle, 2, 4}]}
+      assert result == many([{:circle, 5}, {:rectangle, 6, 8}, {:rectangle, 2, 4}])
     end
   end
 
   describe "Prism.transform/3 - wrapped values" do
-    test "handles {:single, tuple}" do
+    test "handles %Enzyme.Single{}" do
       prism = Prism.new(:ok, [:value])
-      assert Prism.transform(prism, {:single, {:ok, 5}}, &(&1 * 2)) == {:single, {:ok, 10}}
+      assert Prism.transform(prism, single({:ok, 5}), &(&1 * 2)) == single({:ok, 10})
     end
 
-    test "handles {:many, list}" do
+    test "handles %Enzyme.Many{}" do
       prism = Prism.new(:ok, [:value])
 
-      result = Prism.transform(prism, {:many, [{:ok, 1}, {:error, "x"}]}, &(&1 * 10))
-      assert result == {:many, [{:ok, 10}, {:error, "x"}]}
+      result = Prism.transform(prism, many([{:ok, 1}, {:error, "x"}]), &(&1 * 10))
+      assert result == many([{:ok, 10}, {:error, "x"}])
     end
   end
 
@@ -304,7 +306,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: nil
       }
 
-      assert Prism.select(prism, {:ok, 42}) == {:single, {:success, 42}}
+      assert Prism.select(prism, {:ok, 42}) == single({:success, 42})
     end
 
     test "retags multiple value extraction" do
@@ -316,7 +318,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: nil
       }
 
-      assert Prism.select(prism, {:rectangle, 3, 4}) == {:single, {:box, 3, 4}}
+      assert Prism.select(prism, {:rectangle, 3, 4}) == single({:box, 3, 4})
     end
 
     test "retags rest pattern extraction" do
@@ -328,7 +330,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: nil
       }
 
-      assert Prism.select(prism, {:old_tag, 1, 2, 3}) == {:single, {:new_tag, 1, 2, 3}}
+      assert Prism.select(prism, {:old_tag, 1, 2, 3}) == single({:new_tag, 1, 2, 3})
     end
 
     test "retags single element rest pattern" do
@@ -340,7 +342,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: nil
       }
 
-      assert Prism.select(prism, {:ok, 42}) == {:single, {:success, 42}}
+      assert Prism.select(prism, {:ok, 42}) == single({:success, 42})
     end
 
     test "retags filter-only pattern (all nils)" do
@@ -352,7 +354,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: nil
       }
 
-      assert Prism.select(prism, {:ok, 42}) == {:single, {:success, 42}}
+      assert Prism.select(prism, {:ok, 42}) == single({:success, 42})
     end
 
     test "retags filter-only with multiple nils" do
@@ -364,7 +366,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: nil
       }
 
-      assert Prism.select(prism, {:rectangle, 3, 4}) == {:single, {:box, 3, 4}}
+      assert Prism.select(prism, {:rectangle, 3, 4}) == single({:box, 3, 4})
     end
 
     test "non-matching tuple returns nil with retag" do
@@ -376,7 +378,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: nil
       }
 
-      assert Prism.select(prism, {:error, "fail"}) == {:single, nil}
+      assert Prism.select(prism, {:error, "fail"}) == none()
     end
   end
 
@@ -390,7 +392,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: [:b, :a]
       }
 
-      assert Prism.select(prism, {:pair, 1, 2}) == {:single, {:swapped, 2, 1}}
+      assert Prism.select(prism, {:pair, 1, 2}) == single({:swapped, 2, 1})
     end
 
     test "drops middle value from three" do
@@ -402,7 +404,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: [:x, :z]
       }
 
-      assert Prism.select(prism, {:point3d, 1, 2, 3}) == {:single, {:point2d, 1, 3}}
+      assert Prism.select(prism, {:point3d, 1, 2, 3}) == single({:point2d, 1, 3})
     end
 
     test "duplicates a value" do
@@ -414,7 +416,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: [:value, :value]
       }
 
-      assert Prism.select(prism, {:data, 42}) == {:single, {:double, 42, 42}}
+      assert Prism.select(prism, {:data, 42}) == single({:double, 42, 42})
     end
 
     test "extracts from non-contiguous positions and reorders" do
@@ -426,7 +428,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: [:c, :a]
       }
 
-      assert Prism.select(prism, {:quad, 1, 2, 3, 4}) == {:single, {:pair, 3, 1}}
+      assert Prism.select(prism, {:quad, 1, 2, 3, 4}) == single({:pair, 3, 1})
     end
 
     test "single value to single value with new tag" do
@@ -438,7 +440,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: [:value]
       }
 
-      assert Prism.select(prism, {:ok, 42}) == {:single, {:success, 42}}
+      assert Prism.select(prism, {:ok, 42}) == single({:success, 42})
     end
   end
 
@@ -452,7 +454,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: nil
       }
 
-      assert Prism.transform(prism, {:ok, 5}, &(&1 * 2)) == {:single, {:success, 10}}
+      assert Prism.transform(prism, single({:ok, 5}), &(&1 * 2)) == single({:success, 10})
     end
 
     test "transforms and retags multiple values" do
@@ -465,7 +467,9 @@ defmodule Enzyme.PrismTest do
       }
 
       transform_fn = fn {w, h} -> {w * 2, h * 2} end
-      assert Prism.transform(prism, {:rectangle, 3, 4}, transform_fn) == {:single, {:box, 6, 8}}
+
+      assert Prism.transform(prism, single({:rectangle, 3, 4}), transform_fn) ==
+               single({:box, 6, 8})
     end
 
     test "transforms and retags rest pattern" do
@@ -478,7 +482,9 @@ defmodule Enzyme.PrismTest do
       }
 
       transform_fn = fn {a, b} -> {a + 1, b + 1} end
-      assert Prism.transform(prism, {:data, 1, 2}, transform_fn) == {:single, {:values, 2, 3}}
+
+      assert Prism.transform(prism, single({:data, 1, 2}), transform_fn) ==
+               single({:values, 2, 3})
     end
 
     test "transforms and retags filter-only pattern" do
@@ -492,7 +498,7 @@ defmodule Enzyme.PrismTest do
 
       transform_fn = fn {:ok, v} -> {:ok, v * 2} end
       # Note: transform receives whole tuple for filter-only, but result is retagged
-      assert Prism.transform(prism, {:ok, 5}, transform_fn) == {:single, {:success, 10}}
+      assert Prism.transform(prism, single({:ok, 5}), transform_fn) == single({:success, 10})
     end
 
     test "leaves non-matching tuple unchanged" do
@@ -504,7 +510,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: nil
       }
 
-      assert Prism.transform(prism, {:error, "x"}, &(&1 * 2)) == {:single, {:error, "x"}}
+      assert Prism.transform(prism, single({:error, "x"}), &(&1 * 2)) == single({:error, "x"})
     end
   end
 
@@ -519,7 +525,9 @@ defmodule Enzyme.PrismTest do
       }
 
       transform_fn = fn {a, b} -> {a * 10, b * 10} end
-      assert Prism.transform(prism, {:pair, 1, 2}, transform_fn) == {:single, {:swapped, 20, 10}}
+
+      assert Prism.transform(prism, single({:pair, 1, 2}), transform_fn) ==
+               single({:swapped, 20, 10})
     end
 
     test "transforms and drops value" do
@@ -533,8 +541,8 @@ defmodule Enzyme.PrismTest do
 
       transform_fn = fn {x, y, z} -> {x + 1, y + 1, z + 1} end
 
-      assert Prism.transform(prism, {:point3d, 0, 0, 0}, transform_fn) ==
-               {:single, {:point2d, 1, 1}}
+      assert Prism.transform(prism, single({:point3d, 0, 0, 0}), transform_fn) ==
+               single({:point2d, 1, 1})
     end
 
     test "transforms and duplicates" do
@@ -546,7 +554,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: [:value, :value]
       }
 
-      assert Prism.transform(prism, {:data, 5}, &(&1 * 2)) == {:single, {:double, 10, 10}}
+      assert Prism.transform(prism, single({:data, 5}), &(&1 * 2)) == single({:double, 10, 10})
     end
 
     test "transforms non-contiguous extraction with assembly" do
@@ -560,8 +568,8 @@ defmodule Enzyme.PrismTest do
 
       transform_fn = fn {a, c} -> {a + 100, c + 100} end
 
-      assert Prism.transform(prism, {:quad, 1, 2, 3, 4}, transform_fn) ==
-               {:single, {:sum, 103, 101}}
+      assert Prism.transform(prism, single({:quad, 1, 2, 3, 4}), transform_fn) ==
+               single({:sum, 103, 101})
     end
   end
 
@@ -582,7 +590,7 @@ defmodule Enzyme.PrismTest do
           {:ok, 2}
         ])
 
-      assert result == {:many, [{:success, 1}, {:success, 2}]}
+      assert result == many([{:success, 1}, {:success, 2}])
     end
 
     test "retags and reorders in list" do
@@ -601,7 +609,7 @@ defmodule Enzyme.PrismTest do
           {:pair, 3, 4}
         ])
 
-      assert result == {:many, [{:swapped, 2, 1}, {:swapped, 4, 3}]}
+      assert result == many([{:swapped, 2, 1}, {:swapped, 4, 3}])
     end
 
     test "transforms and retags list items" do
@@ -624,7 +632,7 @@ defmodule Enzyme.PrismTest do
           &(&1 * 10)
         )
 
-      assert result == {:many, [{:success, 10}, {:error, "x"}, {:success, 20}]}
+      assert result == many([{:success, 10}, {:error, "x"}, {:success, 20}])
     end
 
     test "transforms, reorders, and retags list items" do
@@ -649,7 +657,7 @@ defmodule Enzyme.PrismTest do
           transform_fn
         )
 
-      assert result == {:many, [{:swapped, 3, 2}, {:other, 99}, {:swapped, 5, 4}]}
+      assert result == many([{:swapped, 3, 2}, {:other, 99}, {:swapped, 5, 4}])
     end
   end
 
@@ -663,7 +671,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: nil
       }
 
-      assert Prism.select(prism, {:empty}) == {:single, {:void}}
+      assert Prism.select(prism, {:empty}) == single({:void})
     end
 
     test "retag preserves structure in partial extraction" do
@@ -675,7 +683,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: nil
       }
 
-      assert Prism.select(prism, {:quad, 1, 2, 3, 4}) == {:single, {:pair, 2, 4}}
+      assert Prism.select(prism, {:quad, 1, 2, 3, 4}) == single({:pair, 2, 4})
     end
 
     test "retag with transform on partial extraction" do
@@ -689,7 +697,7 @@ defmodule Enzyme.PrismTest do
 
       # Shorthand retag with partial extraction: replaces in-place but retags
       assert Prism.transform(prism, {:triple, 1, 2, 3}, &(&1 * 10)) ==
-               {:single, {:data, 1, 20, 3}}
+               single({:data, 1, 20, 3})
     end
 
     test "assembly with single value input and output" do
@@ -701,7 +709,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: [:value]
       }
 
-      assert Prism.select(prism, {:ok, 42}) == {:single, {:success, 42}}
+      assert Prism.select(prism, {:ok, 42}) == single({:success, 42})
     end
 
     test "wrapped tuple with retag" do
@@ -713,7 +721,7 @@ defmodule Enzyme.PrismTest do
         output_pattern: nil
       }
 
-      assert Prism.select(prism, {:single, {:ok, 42}}) == {:single, {:success, 42}}
+      assert Prism.select(prism, single({:ok, 42})) == single({:success, 42})
     end
   end
 end
