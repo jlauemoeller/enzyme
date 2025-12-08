@@ -28,7 +28,7 @@ defmodule Enzyme.Filter do
   For `%Enzyme.Single{value: value}`, it returns `%Enzyme.Single{value: value}`
   if the predicate returns true, otherwise returns %Enzyme.None{}.
 
-  For `%Enzyme.Many{values: list}`, returns an `Enzyme.Many{}` containing only
+  For `%Enzyme.Many{values: list}`, returns an `Enzyme.Many{} containing only
   the elements for which the predicate returns true. If no elements match,
   returns `%Enzyme.Many{values: []}`.
 
