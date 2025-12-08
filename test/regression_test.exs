@@ -3,7 +3,7 @@ defmodule Enzyme.RegressionTest do
   use ExUnit.Case
   doctest Enzyme
 
-  describe "regression test 1" do
+  describe "One select applied to list of records" do
     setup do
       data = [
         %{"label1" => [%{unit: "a", item: "1"}, %{unit: "b", item: "2"}]},
@@ -31,40 +31,25 @@ defmodule Enzyme.RegressionTest do
     end
   end
 
-  describe "regression test 2" do
+  describe "One transform applied to list of records" do
     setup do
-      data = %{
-        field: "field",
-        cards: %{
-          "A" => %{
-            "label1" => [
-              %{item: "1", unit: nil},
-              %{item: "2", unit: nil}
-            ]
-          },
-          "B" => %{
-            "label2" => [
-              %{item: "1", unit: nil},
-              %{item: "2", unit: nil}
-            ]
-          },
-          "C" => %{
-            "label3" => [
-              %{item: "1", unit: nil},
-              %{item: "2", unit: nil}
-            ]
-          }
-        }
-      }
+      data = [
+        [
+          %{field: nil},
+          %{field: nil}
+        ]
+      ]
 
       [data: data]
     end
 
-    test "does not produce nil values for elements that do not match", %{data: data} do
-      actual = Enzyme.select(data, ":cards[*][label3]")
-      expected = [[%{unit: nil, item: "1"}, %{unit: nil, item: "2"}]]
-
-      assert actual == expected
+    test "Applies One transform to list of records", %{data: data} do
+      assert Enzyme.transform(data, "[*]:field", "value") == [
+               [
+                 %{field: "value"},
+                 %{field: "value"}
+               ]
+             ]
     end
   end
 

@@ -191,6 +191,16 @@ defmodule Enzyme.One do
     single(List.update_at(list, index, fun))
   end
 
+  def transform(%One{index: index} = lens, list, fun)
+      when is_list(list) and not is_integer(index) and is_transform(fun) do
+    transformed =
+      Enum.map(list, fn item ->
+        transform(lens, item, fun)
+      end)
+
+    many(Enum.map(transformed, fn wrapped -> unwrap(wrapped) end))
+  end
+
   def transform(%One{index: key}, map, fun) when is_map(map) and is_transform(fun) do
     if Map.has_key?(map, key) do
       single(Map.update!(map, key, fun))
