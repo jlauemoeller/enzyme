@@ -94,10 +94,10 @@ defmodule Enzyme.One do
     end
   end
 
-  def select(%One{index: index}, list) when is_list(list) and not is_integer(index) do
+  def select(%One{index: index} = lens, list) when is_list(list) and not is_integer(index) do
     selection =
       Enum.reduce(list, [], fn item, acc ->
-        case select(%One{index: index}, item) do
+        case select(lens, item) do
           %None{} -> acc
           %Single{value: value} -> [value | acc]
         end
