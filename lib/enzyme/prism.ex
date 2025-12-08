@@ -2,9 +2,9 @@ defmodule Enzyme.Prism do
   @moduledoc """
   A prism that matches and extracts values from tagged tuples (sum types).
 
-  Prisms are optics for working with data that may or may not match a particular
+  Prisms are optics for working with tuples that may or may not match a particular
   shape. Unlike lenses which always focus on a present value, prisms may fail to
-  match, in which case they return nil (for select) or leave the value unchanged
+  match, in which case they return %None{} (for select) or leave the value unchanged
   (for transform).
 
   ## Pattern Syntax
@@ -14,9 +14,9 @@ defmodule Enzyme.Prism do
 
   | Pattern | Input | Output |
   |---------|-------|--------|
-  | `:{:ok, v}` | `{:ok, 5}` | `5` (single named → unwrap) |
-  | `:{:rectangle, w, h}` | `{:rectangle, 3, 4}` | `{3, 4}` (multiple → tuple) |
-  | `:{:rectangle, _, h}` | `{:rectangle, 3, 4}` | `4` (single named → unwrap) |
+  | `:{:ok, v}` | `{:ok, 5}` | `5` (single named -> unwrap) |
+  | `:{:rectangle, w, h}` | `{:rectangle, 3, 4}` | `{3, 4}` (multiple -> tuple) |
+  | `:{:rectangle, _, h}` | `{:rectangle, 3, 4}` | `4` (single named -> unwrap) |
   | `:{:point3d, x, _, z}` | `{:point3d, 1, 2, 3}` | `{1, 3}` (named ones, in order) |
   | `:{:rectangle, ...}` | `{:rectangle, 3, 4}` | `{3, 4}` (everything after tag) |
   | `:{:rectangle, _, _}` | `{:rectangle, 3, 4}` | `{:rectangle, 3, 4}` (filter only) |
