@@ -1,12 +1,12 @@
 # Enzyme
 
-A powerful Elixir library for querying and transforming deeply nested data structures using an expressive path syntax.
+A powerful Elixir library for digesting, querying, and transforming deeply nested data structures using an expressive path syntax.
 
 [![CI](https://github.com/jlauemoeller/enzyme/actions/workflows/ci.yml/badge.svg)](https://github.com/jlauemoeller/enzyme/actions/workflows/ci.yml)
 
 ## Overview
 
-Enzyme lets you precisely locate and transform data deep within Elixir data structures using an intuitive path syntax. Rather than manually traversing nested maps and lists, you can extract or modify specific values with indexing, slicing, wildcards, filters, and prisms. The library even converts data between different representations automatically making it ideal for processing JSON APIs and configuration files. Enzyme implements functional lenses under the hood, but no lens theory knowledge is required to use it effectively.
+Enzyme lets you precisely locate and transform data deep within Elixir data structures using an intuitive path syntax. Rather than manually traversing nested maps and lists, you can extract or modify specific values with indexing, slicing, wildcards, filters, and prisms. The library even converts data between different representations on the fly making it ideal for processing JSON API responses,configuration files, or working with complex text fixtures. Enzyme implements functional lenses under the hood, but no lens theory knowledge is required to use it effectively.
 
 ## Example
 
@@ -148,9 +148,9 @@ Filter expressions use `compare/2` for comparisons if defined for the data type,
 
 ## Features
 
-- **Path-based or programmatic construction**: Lenses can be constructed either from string paths or programmatically. Paths can include slices, wildcards, filters, prisms, and isomorphisms. In most cases, the path syntax is more concise and easier to read.
+- **Path-based or programmatic construction**: Lenses can be constructed either from string paths or programmatically. Paths can include slices, wildcards, filters, prisms, and isomorphisms. In most cases, the path syntax is more concise and easier to read but programmatic construction is available for dynamic scenarios and for when you need filters that cannot be expressed in the path syntax.
 - **Filter expressions**: The lens focus can be fine tuned using filter expressions with logical operators and comparison operators. Isomorphisms can be applied within filters for type-safe comparisons.
-- **Prisms**: Work with tagged tuples (aka. "sum types") like `{:ok, value}` and `{:error, reason}`, supports optional retagging and value reassembly.
+- **Prisms**: You can select and filter tagged tuples (aka. "sum types") like `{:ok, value}` and `{:error, reason}`. Enzyme supports optional retagging and value reassembly so you can project sum types into different shapes.
 - **Extensible Isomorphisms**: Lenses can use bidirectional transformations (isomorphims) for viewing or transforming data through a conversion layer. You can use built-in isos or define arbitrarily complex custom ones.
 - **Composable**: Lenses can be composed together to create complex queries and transformations from smaller reusable parts.
 - **Reusable**: Create reusable lens objects or selector/transformer functions for repeated use. This improves performance by avoiding repeated parsing of path strings.
@@ -164,16 +164,18 @@ Add `enzyme` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:enzyme, "~> 0.2.1"}
+    {:enzyme, "~> 0.3.0"}
   ]
 end
 ```
 
 ## Path Syntax
 
-Paths are recipes for how to navigate and manipulate data structures. The Enzyme parser compiles path strings into lens objects that can be used with `Enzyme.select/*` and `Enzyme.transform/*`. To understand how a path works, read it from left to right, applying each segment in sequence to the data structure. By doing so, you move the "focus" -- written @ -- into the data structure until you reach the end of the path, the end of the data structure, or a point where the path no longer matches. If there is a match, the `select` operation returns the value(s) at the current focus, while `transform` applies a function to the focus and replaces it with the result of the transformation.
+Paths are recipes for how to navigate and manipulate data structures. The Enzyme parser compiles path strings into lens objects that can be used with `Enzyme.select/3` and `Enzyme.transform/4`. To understand how a path works, read it from left to right, applying each segment in sequence to the data structure. By doing so, you move the "focus" -- written @ -- into the data structure until you reach the end of the path, the end of the data structure, or a point where the path no longer matches. If there is a match, the `select` operation returns the value(s) at the current focus, while `transform` applies a function to the focus and replaces it with the result of the transformation.
 
-What makes lenses particularly powerful is their ability to focus on multiple values at once (e.g. all items in a list), and that they can be combined with filters, prisms, and isomorphisms to create complex queries and transformations. The focus is not limited to a single "node" in the data structure but simultaneously tracks multiple nodes as needed.
+Enzyme allows you to work with complex data structures in a declarative way where you specify _where_ you want to extract or change data rather than _how_ to traverse the data structure step-by-step. This leads to more concise and maintainable code and makes it much easier to adapt to changing data structures.
+
+One particularly powerful aspect of functional lenses is their ability to conceptually focus on multiple values at once (e.g. all items in a list), and that they can be combined with filters, prisms, and isomorphisms to create complex queries and transformations. The lens focus is not limited to a single "node" in the data structure but simultaneously tracks multiple nodes as needed.
 
 ### Dot and Colon Notation
 
@@ -182,18 +184,18 @@ So far, all our examples have been based on parsed JSON which yields nested maps
 Use dot notation to access map keys:
 
 ```elixir
-data = %{"company" => %{name: "Acme", "founded" => 1990}}
+data = %{"company" => %Company{name: "Acme", founded: 1990}}
 
 Enzyme.select(data, "company:name")
 # => "Acme"
 
-Enzyme.select(data, "company.founded")
+Enzyme.select(data, "company:founded")
 # => 1990
 ```
 
 ### Numeric Indices
 
-Access list or tuple elements by index with brackets:
+Access list or tuple elements by index using a familiar bracket notation:
 
 ```elixir
 data = %{"items" => ["first", "second", "third"]}
@@ -211,7 +213,7 @@ Enzyme.select(data, "items[0,2]")
 
 ### String or Atom Indices
 
-You can also use brackets for string or atom keys and this is especially useful when selecting a slice of multiple keys:
+You can also use brackets for string or atom keys and this is especially useful when selecting a slice of multiple keys (which you can also do with numeric indices):
 
 ```elixir
 data = %{"user" => %{"name" => "Alice", "email" => "alice@example.com", "role" => "admin"}}
@@ -236,7 +238,6 @@ data = %{
     %{"name" => "Bob", "score" => 87}
   ]
 }
-
 Enzyme.select(data, "users[*]")
 # => [%{"name" => "Alice", "score" => 95}, %{"name" => "Bob", "score" => 87}]
 
@@ -246,6 +247,8 @@ Enzyme.select(data, "users[*].name")
 Enzyme.select(data, "users[*].score")
 # => [95, 87]
 ```
+
+The `[*]` operataor generates a lens that distributes the focus over all elements in a list, tuple or map, and continues the traversal of the rest of the path into all elements it selects. You can combine wildcards with filters to control the selection.
 
 ### Filter Expressions
 
@@ -288,6 +291,8 @@ Enzyme.select(data, "products[*][?price <= 50].name")
 
 #### Filter Operators
 
+You can use the following operators to build filter expressions:
+
 | Operator | Description                                     |
 | -------- | ----------------------------------------------- |
 | `==`     | Equality (Erlang term comparison)               |
@@ -302,8 +307,7 @@ Enzyme.select(data, "products[*][?price <= 50].name")
 | and      | Logical AND                                     |
 | or       | Logical OR                                      |
 
-Use parentheses to control evaluation order. The `~~` operator is useful when
-comparing values that might be atoms or strings:
+The `~~` and `!~` operators convert their operands to strings using `to_string/1` before comparison and come in handy when working with heterogeneous data (but see the section on isomorphisms for a more type-safe approach).
 
 ```elixir
 # String-based comparison
@@ -386,9 +390,9 @@ Enzyme.select(data, "employees[*][?dept == 'Engineering'][?level == 'senior'].na
 # => ["Alice"]
 ```
 
-#### Self Reference
+#### Focus Reference
 
-Use `@` to reference the current focus:
+Use `@` to reference the current focus within filter expressions:
 
 ```elixir
 data = %{"scores" => [85, 92, 78, 95, 88]}
@@ -444,7 +448,7 @@ Enzyme.select(data, "items[*][?price::cents == 15.99]", cents: cents_iso)
 
 ### Prisms
 
-Prisms let you work with tagged tuples (or, "sum types") like `{:ok, value}` or `{:error, reason}`. They match tuples by their tag and/or shape and extract values from specific positions. Non-matching tuples return `nil` on select or pass through unchanged on transform.
+Prisms let you work with tagged tuples (or, "sum types") like `{:ok, value}` or `{:error, reason}`. They match tuples by their tag and/or shape and can extract values from specific positions. You can even convert matching tuples into different tuple shapes, or replace elements. Non-matching tuples return `nil` on select or pass through unchanged on transform.
 
 ```elixir
 # Extract value from {:ok, value} tuples. The named variable `v` indicates
@@ -495,9 +499,11 @@ Enzyme.select({:data, 1, 2, 3, 4}, ":{:data, ...}")
 # => {1, 2, 3, 4}
 ```
 
+Prisms only support a single rest pattern at the end of the tuple so something like `{:data, ..., x}` or `{:data, x, ...}` is not allowed.
+
 #### Filter-Only Prisms
 
-Use all `_` to match without extracting (returns the original tuple):
+Use all `_` to match without extracting. This is useful when yoy are only interested in the shape of the tuplem, or only need to extract certain values:
 
 ```elixir
 results = [{:ok, 1}, {:error, "x"}, {:ok, 2}]
@@ -509,7 +515,7 @@ Enzyme.select(results, "[*]:{:ok, _}")
 
 #### Transforming with Prisms
 
-Transform values inside matching tuples:
+Prisms let you transform values inside matching tuples before passing them on through the lens chain:
 
 ```elixir
 # Double the value inside :ok tuples
@@ -528,7 +534,7 @@ Enzyme.transform(results, "[*]:{:ok, v}", &(&1 * 10))
 
 #### Prisms in Complex Paths
 
-Combine prisms with other path components:
+You can combine prisms with other path components:
 
 ```elixir
 data = %{
@@ -546,7 +552,7 @@ Enzyme.select(data, "responses[*]:{:ok, v}.user.name")
 
 #### Retagging Prisms
 
-Prisms support retagging to transform sum types by changing tags or reassembling extracted values using the `->` arrow syntax.
+Prisms also support retagging to transform sum types by changing tags or reassembling extracted values using the `->` arrow syntax.
 
 **Shorthand retagging (tag-only change):**
 
@@ -573,7 +579,9 @@ Enzyme.select({:data, 1, 2, 3}, ":{:data, ...} -> :values")
 # => {:values, 1, 2, 3}
 ```
 
-**Explicit assembly (reorder, drop, duplicate values):**
+#### Reassembling Prism
+
+Prisms can also reassemble extracted values into new tuple shapes.
 
 ```elixir
 # Reorder values
@@ -605,7 +613,7 @@ Enzyme.transform({:point3d, 0, 0, 0}, ":{:point3d, x, y, z} -> :{:point2d, x, z}
 
 ### Isomorphisms (Isos)
 
-Isos let you view and transform data through a conversion layer. They define bidirectional transformations: a `forward` function converts from the stored representation to a working representation, and a `backward` function converts back.
+Isos let you view and transform data through a conversion layer. They define bidirectional transformations: a `forward` function converts from the stored representation to a working representation, and a `backward` function converts back. `Ensyme.select/3` applies the `forward` function to convert data before extracting it, while `Enzyme.transform/4` applies `forward` before transforming and `backward` after transforming to store the result. That means your transformation function always process data in the working representation created by the `forward` function.
 
 Use `::` to apply an iso in path expressions:
 
@@ -622,7 +630,7 @@ Enzyme.transform(data, "count::integer", &(&1 + 1), [])
 
 #### Built-in Isos
 
-These isos are always available:
+Enxyme ships with a small number of built-in isos for common conversions:
 
 | Iso        | Description                                  | Example                                    |
 | ---------- | -------------------------------------------- | ------------------------------------------ |
@@ -647,9 +655,11 @@ Enzyme.select(data, "config::json", [])
 # => %{"debug" => true}
 ```
 
+The `:json` iso requires the `Jason` library to be available. If `Jason` is not present, attempting to use the `:json` iso will result in a runtime error.
+
 #### Custom Isos
 
-Define custom isos for domain-specific transformations:
+You can easily add your own custom isos for domain-specific transformations:
 
 ```elixir
 # Cents to euros conversion
@@ -671,7 +681,7 @@ Enzyme.transform(data, "price::cents", &(&1 + 1), cents: cents_iso)
 
 #### Iso Resolution
 
-Isos can be provided at parse time or runtime. Runtime isos always take precedence, allowing you to override stored isos:
+Iso definitions can be provided at parse time or runtime. Runtime isos always take precedence, allowing you to override isos stored during parsing:
 
 ```elixir
 # Store iso when creating lens
@@ -693,11 +703,13 @@ Enzyme.select(%{"price" => 1999}, lens, cents: cents_iso)
 # => 19.99
 ```
 
-Resolution priority: runtime opts > stored opts (parse-time) > builtins
+The resolution priority for isos are: runtime > parse-time > builtins.
+
+This allows you to override built-in isos with your own implementations if needed, and allows you to create reusable lenses with embedded isos for common use cases. BY providing different runtime isos, you can adapt the behavior of such lenses as needed.
 
 #### Chaining Isos
 
-Multiple isos can be chained:
+Multiple isos can be chained to create sophisticated transformations:
 
 ```elixir
 # Data is base64-encoded integer string
@@ -709,7 +721,7 @@ Enzyme.select(data, "value::base64::integer", [])
 
 #### Isos in Complex Paths
 
-Combine isos with other path components:
+You can combine isos with other path components to control how data is viewed and transformed:
 
 ```elixir
 data = %{
@@ -755,7 +767,7 @@ Enzyme.transform(data, "users[*][?score == 85].score", fn s -> s + 10 end)
 
 ## Reusable Lenses
 
-Create lens objects or functions for repeated use to avoid repeated parsing:
+Create lens objects to avoid repeated parsing:
 
 ```elixir
 # Create a lens
@@ -765,12 +777,12 @@ user_names = Enzyme.new("users[*].name")
 Enzyme.select(data, user_names)
 
 # Create a selector function
-get_names = Enzyme.select("users[*].name")
+get_names = fn data -> Enzyme.select(data, "users[*].name") end
 get_names.(data)
 # => ["alice", "bob"]
 
 # Create a transformer function
-upcase_names = Enzyme.transform(Enzyme.new("users[*].name"), &String.upcase/1)
+upcase_names = fn data -> Enzyme.transform(data, Enzyme.new("users[*].name"), &String.upcase/1) end
 upcase_names.(data)
 # => %{"users" => [%{"name" => "ALICE", ...}, ...]}
 ```

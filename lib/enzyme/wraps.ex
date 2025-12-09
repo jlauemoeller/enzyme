@@ -1,5 +1,26 @@
 defmodule Enzyme.Wraps do
-  @moduledoc false
+  @moduledoc """
+  Utility functions for working with wrapped Enzyme values.
+
+  - A %None{} struct represents the absence of a value. When passed through
+    lenses, their `select/2` and `transform/3` functions return %None{}.
+
+  - A %Single{} structs wraps a single value which, as far as the library is
+    concerned, can be any Elixir value. When %Single{} structs are passed
+    through lenses, their `select/2` and `transform/3` functions operate on the
+    wrapped value and return a new wrapped value, which may be a %None{},
+    %Single{} or %Many{} struct.
+
+  - A %Many{} struct wraps a list of values, each of which must be a wrapped
+    value. When %Many{} structs are passed through lenses, their `select/2`
+    and `transform/3` functions operate on each wrapped value in the list and
+    return a new %Many{} struct containing the results.
+
+  Wrapping and unwrapping functions are provided to facilitate working with
+  these structs and should be used in favor of directly constructing them. The
+  functions implements uniform handling of the different wrapped types and
+  semantics around "double-wrapping".
+  """
 
   import Enzyme.Guards
 
@@ -8,12 +29,26 @@ defmodule Enzyme.Wraps do
   alias Enzyme.Single
   alias Enzyme.Types
 
-  @spec many(Types.collection()) :: Many.t()
-  def many(collection) when is_collection(collection) do
-    %Many{values: collection}
+  @doc """
+  Wraps a list of values in a `%Enzyme.Many{}` struct. If the input is already
+  a `%Enzyme.Many{}` struct, it is returned unchanged. The list should consist
+  of wrapped values.
+  """
+  @spec many(list()) :: Many.t()
+  def many(%Many{} = many), do: many
+
+  def many(list) when is_list(list) do
+    %Many{values: list}
   end
 
+  @doc """
+  Wraps a value in a `%Enzyme.Single{}` struct. If the input is already a
+  `%Enzyme.Single{}` struct, it is returned unchanged.
+  """
+
   @spec single(any()) :: Single.t()
+  def single(%Single{} = single), do: single
+
   def single(value) do
     %Single{value: value}
   end
@@ -25,77 +60,29 @@ defmodule Enzyme.Wraps do
 
   @doc """
   Unwraps a value from `%Enzyme.None{}`, `%Enzyme.Single{}` or
-  `%Enzyme.Many{}` structs, or recursively unwraps lists of such values.
+  `%Enzyme.Many{}` structs. Unwrapping a "naked" (unwrapped) value returns the
+  value unchanged.
   """
 
-  @spec unwrap(Types.wrapped() | list()) :: any()
-
-  def unwrap(list) when is_list(list) do
-    Enum.map(list, &unwrap(&1))
-  end
+  @spec unwrap(Types.wrapped() | any()) :: any()
 
   def unwrap(%None{}), do: nil
 
   def unwrap(%Single{value: value}), do: value
 
-  def unwrap(%Many{values: list}), do: list
+  def unwrap(%Many{values: list}) do
+    Enum.map(list, &unwrap(&1))
+  end
 
   def unwrap(naked), do: naked
 
-  @doc """
-  Applies a select function to a wrapped value, handling `%Enzyme.None{}`,
-  `%Enzyme.Single{}` and `%Enzyme.Many{}` uniformly. The select_fn should accept
-  the unwrapped value and return a wrapped result.
-  """
-
-  @spec select_wrapped(
-          Types.wrapped(),
-          (any() -> Types.wrapped())
-        ) :: Types.wrapped()
-
-  def select_wrapped(%None{}, _select_fn) do
-    %None{}
+  def unwrap!(wrapped) when is_wrapped(wrapped) do
+    unwrap(wrapped)
   end
 
-  def select_wrapped(%Single{value: value}, select_fn) do
-    select_fn.(value)
-  end
-
-  def select_wrapped(%Many{values: collection}, select_fn) when is_collection(collection) do
-    selection =
-      Enum.reduce(collection, [], fn item, acc ->
-        case select_fn.(item) do
-          %None{} -> acc
-          wrapped -> [unwrap(wrapped) | acc]
-        end
-      end)
-
-    many(Enum.reverse(selection))
-  end
-
-  @doc """
-  Applies a transform function to a wrapped value, handling `%Enzyme.None{}`,
-  `%Enzyme.Single{}`, and `%Enzyme.Many{}` uniformly. The transform_fn should
-  accept the unwrapped value and transform function abd return a wrapped result.
-  """
-
-  @spec transform_wrapped(
-          Types.wrapped(),
-          (any() -> any()),
-          (any(), (any() -> any()) -> Types.wrapped())
-        ) :: Types.wrapped()
-
-  def transform_wrapped(%None{}, _fun, _transform_fn) do
-    %None{}
-  end
-
-  def transform_wrapped(%Single{value: value}, fun, transform_fn) when is_transform(fun) do
-    transform_fn.(value, fun)
-  end
-
-  def transform_wrapped(%Many{values: collection}, fun, transform_fn)
-      when is_collection(collection) and is_transform(fun) do
-    many(Enum.map(collection, fn item -> unwrap(transform_fn.(item, fun)) end))
+  def unwrap!(naked) do
+    raise ArgumentError,
+          "Enzyme.Wraps.unwrap!/1 expected a wrapped value, got #{inspect(naked)}"
   end
 
   @doc """

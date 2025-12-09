@@ -6,57 +6,119 @@ defmodule Enzyme.AllTest do
   import Enzyme.Wraps
 
   alias Enzyme.All
+  alias Enzyme.Many
 
-  # These tests use the internal All.select/2 and All.transform/3 functions
-  # which return wrapped values. The public Enzyme.select/2 API unwraps results.
+  describe "All.select/2" do
+    test "returns %None{} when input is %None{}" do
+      lens = %All{}
 
-  describe "All.select/2 (internal)" do
+      assert All.select(lens, none()) == none()
+    end
+
+    test "lifts individual values in a %Single{} list to wrapped values" do
+      lens = %All{}
+
+      assert All.select(lens, single([10, 20, 30])) ==
+               many([single(10), single(20), single(30)])
+    end
+
+    test "lifts individual values in a %Single{} tuple to wrapped values" do
+      lens = %All{}
+
+      assert All.select(lens, single({10, 20, 30})) ==
+               many([single(10), single(20), single(30)])
+    end
+
+    test "lifts individual values in a %Single{} map to wrapped values" do
+      lens = %All{}
+
+      %Many{values: actual_values} = All.select(lens, single(%{a: 10, b: 20, c: 30}))
+      %Many{values: expect_values} = many([single(10), single(20), single(30)])
+
+      assert Enum.sort(actual_values) == Enum.sort(expect_values)
+    end
+
+    test "distributes over %Many{}" do
+      lens = %All{}
+
+      assert All.select(
+               lens,
+               many([
+                 single([10, 20]),
+                 single([30, 40])
+               ])
+             ) ==
+               many([
+                 many([single(10), single(20)]),
+                 many([single(30), single(40)])
+               ])
+    end
+
+    test "Returns None when input is a %Single{} with a non-collection value" do
+      lens = %All{}
+      assert All.select(lens, single(1)) == none()
+    end
+
     test "returns empty collection when input collection is empty" do
       lens = %All{}
 
       assert All.select(lens, single([])) == many([])
-      assert All.select(lens, many([[]])) == many([[]])
-      assert All.select(lens, {}) == many({})
-      assert All.select(lens, []) == many([])
-      assert All.select(lens, %{}) == many([])
+      assert All.select(lens, many([])) == many([])
     end
 
-    test "selects all values from map with atom keys" do
+    test "raises ArgumentError when input is not wrapped" do
       lens = %All{}
 
-      assert(All.select(lens, %{a: 10, b: 20}) == many([10, 20]))
-    end
-
-    test "selects all values from map with mixed key types" do
-      lens = %All{}
-
-      assert All.select(lens, %{:atom_key => 10, "string_key" => 20}) == many([10, 20])
+      assert_raise ArgumentError, fn ->
+        All.select(lens, 123)
+      end
     end
   end
 
-  describe "All.transform/3 (internal)" do
-    test "returns empty collection when input collection is empty" do
+  describe "All.transform/3" do
+    test "returns %None{} when input is %None{}" do
       lens = %All{}
 
-      assert All.transform(lens, single([]), &(&1 * 10)) == many([])
-      assert All.transform(lens, many([[]]), &(&1 * 10)) == many([[]])
-      assert All.transform(lens, {}, &(&1 * 10)) == many({})
-      assert All.transform(lens, [], &(&1 * 10)) == many([])
-      assert All.transform(lens, %{}, &(&1 * 10)) == many(%{})
+      assert All.transform(lens, none(), &(&1 * 10)) == none()
     end
 
-    test "transforms all values in map with atom keys" do
+    test "transforms a %Single{} value" do
       lens = %All{}
 
-      assert All.transform(lens, %{a: 10, b: 20}, &(&1 * 10)) ==
-               many(%{a: 100, b: 200})
+      assert All.transform(lens, single(10), &(&1 * 10)) == single(100)
     end
 
-    test "transforms all values in map with mixed key types" do
+    test "distributes over %Many{}" do
       lens = %All{}
 
-      assert All.transform(lens, %{:atom_key => 10, "string_key" => 20}, &(&1 * 10)) ==
-               many(%{:atom_key => 100, "string_key" => 200})
+      assert All.transform(
+               lens,
+               many([
+                 single(10),
+                 single(20)
+               ]),
+               &(&1 * 10)
+             ) ==
+               many([
+                 single(100),
+                 single(200)
+               ])
+    end
+
+    test "raises ArgumentError when input is not wrapped" do
+      lens = %All{}
+
+      assert_raise ArgumentError, fn ->
+        All.transform(lens, 123, &(&1 * 10))
+      end
+    end
+
+    test "raises ArgumentError when transform is not a function of arity 1" do
+      lens = %All{}
+
+      assert_raise ArgumentError, fn ->
+        All.transform(lens, single(10), 123)
+      end
     end
   end
 end

@@ -83,7 +83,13 @@ defmodule Enzyme.Iso.Builtins do
   """
   @spec float() :: Iso.t()
   def float do
-    Iso.new(&String.to_float/1, &Float.to_string/1)
+    Iso.new(
+      fn string ->
+        {float, ""} = Float.parse(string)
+        float
+      end,
+      fn float -> :erlang.float_to_binary(float, [:compact, decimals: 15]) end
+    )
   end
 
   @doc """

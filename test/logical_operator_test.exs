@@ -1,4 +1,5 @@
 defmodule Enzyme.LogicalOperatorTest do
+  @moduledoc false
   use ExUnit.Case
 
   describe "logical operators in filters" do
