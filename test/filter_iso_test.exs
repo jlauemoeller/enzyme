@@ -1,4 +1,5 @@
 defmodule FilterIsoTest do
+  @moduledoc false
   use ExUnit.Case, async: true
 
   alias Enzyme.Iso

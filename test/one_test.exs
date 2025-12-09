@@ -7,122 +7,139 @@ defmodule Enzyme.OneTest do
 
   alias Enzyme.One
 
-  # These tests use the internal One.select/2 and One.transform/3 functions
-  # which return wrapped values. The public Enzyme.select/2 API unwraps results.
+  describe "One.select/2" do
+    test "returns %None{} when input is %None{}" do
+      lens = %One{index: 0}
+      assert One.select(lens, none()) == none()
+    end
 
-  describe "One.select/2 (internal)" do
-    test "returns nil when index is not found in list" do
-      lens = %One{index: 10}
+    test "returns %None{} when input is %Single{} with a scalar value" do
+      lens = %One{index: 0}
+      assert One.select(lens, single(123)) == none()
+    end
+
+    test "returns value from list by index when index is valid" do
+      lens = %One{index: 1}
+
+      assert One.select(lens, single([10, 20])) == single(20)
+    end
+
+    test "returns value from keyword list by atom index when index is valid" do
+      lens = %One{index: :a}
+
+      assert One.select(lens, single(a: 10, b: 20)) == single(10)
+    end
+
+    test "returns element from end of list if index is less than zero" do
+      lens = %One{index: -1}
+
+      assert One.select(lens, single([10, 20])) == single(20)
+    end
+
+    test "returns %None{} if index is outside list bounds" do
+      lens = %One{index: 5}
 
       assert One.select(lens, single([10, 20])) == none()
+    end
 
-      assert One.select(lens, many([[10, 20], [30, 40]])) == many([])
+    test "returns value from tuple by index when index is valid" do
+      lens = %One{index: 0}
+
+      assert One.select(lens, single({10, 20})) == single(10)
+    end
+
+    test "returns %None{} if index is less than zero" do
+      lens = %One{index: -1}
 
       assert One.select(lens, single({10, 20})) == none()
-
-      assert One.select(lens, many([{10, 20}, {30, 40}])) == many([])
-      assert One.select(lens, {10, 20}) == none()
-
-      assert One.select(lens, [10, 20]) == none()
-
-      assert One.select(lens, ten: 10, twenty: 20) == none()
-
-      assert One.select(lens, %{"a" => 10, "b" => 20}) == none()
     end
 
-    test "selects value from map with atom key" do
-      lens = %One{index: :b}
+    test "returns %None{} if index is outside tuple bounds" do
+      lens = %One{index: 5}
 
-      assert One.select(lens, %{a: 10, b: 20}) == single(20)
-
-      assert One.select(lens, single(%{a: 10, b: 20})) == single(20)
-
-      assert One.select(lens, many([%{a: 10, b: 20}, %{a: 30, b: 40}])) == many([20, 40])
+      assert One.select(lens, single({10, 20})) == none()
     end
 
-    test "returns nil when atom key is not found in map" do
-      lens = %One{index: :missing}
+    test "returns value from map by key when key is present" do
+      lens = %One{index: "b"}
 
-      assert One.select(lens, %{a: 10, b: 20}) == none()
+      assert One.select(lens, single(%{"a" => 10, "b" => 20})) == single(20)
     end
 
-    test "distinguishes between atom and string keys" do
-      atom_lens = %One{index: :key}
-      string_lens = %One{index: "key"}
+    test "returns %None{} if key is not present in map" do
+      lens = %One{index: "missing"}
 
-      # Map with atom key
-      assert One.select(atom_lens, %{key: 10}) == single(10)
-      assert One.select(string_lens, %{key: 10}) == none()
+      assert One.select(lens, single(%{"a" => 10, "b" => 20})) == none()
+    end
 
-      # Map with string key
-      assert One.select(atom_lens, %{"key" => 20}) == none()
-      assert One.select(string_lens, %{"key" => 20}) == single(20)
+    test "reaches into collection" do
+      lens = %One{index: 1}
+
+      assert One.select(lens, many([single([10, 20]), single([30, 40])])) ==
+               many([single(20), single(40)])
+    end
+
+    test "raises ArgumentError when input is not wrapped" do
+      lens = %One{index: 0}
+
+      assert_raise ArgumentError, fn ->
+        One.select(lens, 10)
+      end
     end
   end
 
   describe "One.transform/3 (internal)" do
-    test "returns collection unchanged when index is not found" do
-      lens = %One{index: 10}
-
-      assert One.transform(lens, single([10, 20]), &(&1 * 10)) == single([10, 20])
-
-      assert One.transform(lens, many([[10, 20], [30, 40]]), &(&1 * 10)) ==
-               many([[10, 20], [30, 40]])
-
-      assert One.transform(lens, single({10, 20}), &(&1 * 10)) == single({10, 20})
-
-      assert One.transform(lens, many([{10, 20}, {30, 40}]), &(&1 * 10)) ==
-               many([{10, 20}, {30, 40}])
-
-      assert One.transform(lens, {10, 20}, &(&1 * 10)) == single({10, 20})
-      assert One.transform(lens, [10, 20], &(&1 * 10)) == single([10, 20])
-
-      assert One.transform(lens, [ten: 10, twenty: 20], &(&1 * 10)) ==
-               single(ten: 10, twenty: 20)
-
-      assert One.transform(lens, %{"a" => 10, "b" => 20}, &(&1 * 10)) ==
-               single(%{"a" => 10, "b" => 20})
+    test "transforms %None{} to %None{}" do
+      lens = %One{index: 0}
+      assert One.transform(lens, none(), &(&1 * 10)) == none()
     end
 
-    test "transforms value in map with atom key" do
+    test "transforms list element by index" do
+      lens = %One{index: 1}
+
+      assert One.transform(lens, single([10, 20]), &(&1 * 10)) == single([10, 200])
+    end
+
+    test "transforms keyword list element by atom index" do
       lens = %One{index: :b}
 
-      assert One.transform(lens, %{a: 10, b: 20}, &(&1 * 10)) ==
-               single(%{a: 10, b: 200})
-
-      assert One.transform(lens, single(%{a: 10, b: 20}), &(&1 * 10)) ==
-               single(%{a: 10, b: 200})
-
-      assert One.transform(lens, many([%{a: 10, b: 20}, %{a: 30, b: 40}]), &(&1 * 10)) ==
-               many([%{a: 10, b: 200}, %{a: 30, b: 400}])
+      assert One.transform(lens, single(a: 10, b: 20), &(&1 * 10)) == single(a: 10, b: 200)
     end
 
-    test "returns map unchanged when atom key is not found" do
-      lens = %One{index: :missing}
+    test "transforms tuple element by index" do
+      lens = %One{index: 0}
 
-      assert One.transform(lens, %{a: 10, b: 20}, &(&1 * 10)) ==
-               single(%{a: 10, b: 20})
+      assert One.transform(lens, single({10, 20}), &(&1 * 10)) == single({100, 20})
     end
 
-    test "distinguishes between atom and string keys when transforming" do
-      atom_lens = %One{index: :key}
-      string_lens = %One{index: "key"}
+    test "transforms map value by key" do
+      lens = %One{index: "a"}
 
-      # Transform map with atom key using atom lens
-      assert One.transform(atom_lens, %{key: 10, other: 5}, &(&1 * 10)) ==
-               single(%{key: 100, other: 5})
+      assert One.transform(lens, single(%{"a" => 10, "b" => 20}), &(&1 * 10)) ==
+               single(%{"a" => 100, "b" => 20})
+    end
 
-      # Transform map with atom key using string lens (no match)
-      assert One.transform(string_lens, %{key: 10, other: 5}, &(&1 * 10)) ==
-               single(%{key: 10, other: 5})
+    test "distributes over many" do
+      lens = %One{index: 0}
 
-      # Transform map with string key using string lens
-      assert One.transform(string_lens, %{"key" => 10, "other" => 5}, &(&1 * 10)) ==
-               single(%{"key" => 100, "other" => 5})
+      assert One.transform(lens, many([single([1, 2]), single([3, 4])]), &(&1 * 10)) ==
+               many([single([10, 2]), single([30, 4])])
+    end
 
-      # Transform map with string key using atom lens (no match)
-      assert One.transform(atom_lens, %{"key" => 10, "other" => 5}, &(&1 * 10)) ==
-               single(%{"key" => 10, "other" => 5})
+    test "raises ArgumentError when input is not wrapped" do
+      lens = %One{index: 0}
+
+      assert_raise ArgumentError, fn ->
+        One.transform(lens, [10, 20], &(&1 * 10))
+      end
+    end
+
+    test "raises ArgumentError when transform function is invalid" do
+      lens = %One{index: 0}
+
+      assert_raise ArgumentError, fn ->
+        One.transform(lens, single([10, 20]), "not_a_function")
+      end
     end
   end
 end

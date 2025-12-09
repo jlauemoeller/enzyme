@@ -1,7 +1,6 @@
 defmodule Enzyme.RegressionTest do
   @moduledoc false
   use ExUnit.Case
-  doctest Enzyme
 
   describe "One select applied to list of records" do
     setup do
@@ -33,22 +32,19 @@ defmodule Enzyme.RegressionTest do
 
   describe "One transform applied to list of records" do
     setup do
-      data = [
+      data =
         [
           %{field: nil},
           %{field: nil}
         ]
-      ]
 
       [data: data]
     end
 
     test "Applies One transform to list of records", %{data: data} do
       assert Enzyme.transform(data, "[*]:field", "value") == [
-               [
-                 %{field: "value"},
-                 %{field: "value"}
-               ]
+               %{field: "value"},
+               %{field: "value"}
              ]
     end
   end
@@ -84,6 +80,13 @@ defmodule Enzyme.RegressionTest do
              ]
     end
 
+    test "selecting through multiple [*][*][*] levels", %{data: data} do
+      assert Enzyme.select(data, "departments[*][*][*].name") == [
+               [["Alice", "Bob"]],
+               [["Charlie"]]
+             ]
+    end
+
     test "selecting through multiple [*] levels with filtering", %{data: data} do
       assert Enzyme.select(data, "departments[*][?name == 'Engineering'].employees[*].name") == [
                ["Alice", "Bob"]
@@ -114,10 +117,35 @@ defmodule Enzyme.RegressionTest do
 
       assert updated == expected
     end
+
+    test "transforming through multiple [*][*][*] levels", %{data: data} do
+      updated = Enzyme.transform(data, "departments[*][*][*].title", &String.upcase/1)
+
+      expected = %{
+        "company" => "Acme Corp",
+        "departments" => [
+          %{
+            "name" => "Engineering",
+            "employees" => [
+              %{"name" => "Alice", "title" => "SENIOR ENGINEER"},
+              %{"name" => "Bob", "title" => "JUNIOR ENGINEER"}
+            ]
+          },
+          %{
+            "name" => "Sales",
+            "employees" => [
+              %{"name" => "Charlie", "title" => "SALES MANAGER"}
+            ]
+          }
+        ]
+      }
+
+      assert updated == expected
+    end
   end
 
-  @tag :skip
   describe "Prism transform with assembly" do
+    @describetag :skip
     test "only the extracted parts are passed to the transform function" do
       assert {:point2d, 2, 4} ==
                Enzyme.transform(

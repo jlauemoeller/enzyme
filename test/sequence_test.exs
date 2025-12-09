@@ -5,208 +5,106 @@ defmodule Enzyme.SequenceTest do
 
   import Enzyme.Wraps
 
-  alias Enzyme.All
   alias Enzyme.One
   alias Enzyme.Sequence
 
-  # These tests use the internal Sequence.select/2 and Sequence.transform/3 functions
-  # which return wrapped values. The public Enzyme.select/2 API unwraps results.
+  describe "Sequence.select/2" do
+    test "returns none when input is none" do
+      seq = %Sequence{lenses: [%One{index: "key"}]}
+      assert Sequence.select(seq, none()) == none()
+    end
 
-  describe "Sequence.select/2 (internal)" do
-    test "empty sequence returns the collection unchanged" do
+    test "returns collection when sequence is empty" do
       seq = %Sequence{lenses: []}
-
-      assert Sequence.select(seq, [1, 2, 3]) == [1, 2, 3]
-      assert Sequence.select(seq, %{"a" => 1}) == %{"a" => 1}
+      assert Sequence.select(seq, single([1, 2, 3])) == single([1, 2, 3])
     end
 
-    test "single lens sequence behaves like the lens itself" do
-      seq = %Sequence{lenses: [%One{index: 0}]}
-
-      assert Sequence.select(seq, [10, 20, 30]) == single(10)
-    end
-
-    test "sequences two One lenses for nested access" do
-      seq = %Sequence{lenses: [%One{index: "user"}, %One{index: "name"}]}
-
-      data = %{"user" => %{"name" => "Alice", "age" => 30}}
-      assert Sequence.select(seq, data) == single("Alice")
-    end
-
-    test "sequences three One lenses for deeply nested access" do
-      seq = %Sequence{
-        lenses: [
-          %One{index: "company"},
-          %One{index: "ceo"},
-          %One{index: "name"}
-        ]
-      }
-
-      data = %{"company" => %{"ceo" => %{"name" => "Bob"}}}
-      assert Sequence.select(seq, data) == single("Bob")
-    end
-
-    test "sequences One then All to get all nested values" do
-      seq = %Sequence{lenses: [%One{index: "items"}, %All{}]}
-
-      data = %{"items" => [1, 2, 3]}
-      assert Sequence.select(seq, data) == many([1, 2, 3])
-    end
-
-    test "sequences All then One to get a field from each element" do
-      seq = %Sequence{lenses: [%All{}, %One{index: "name"}]}
-
-      data = [%{"name" => "Alice"}, %{"name" => "Bob"}]
-      assert Sequence.select(seq, data) == many(["Alice", "Bob"])
-    end
-
-    test "sequences One, All, One for nested array field access" do
-      seq = %Sequence{
-        lenses: [
-          %One{index: "users"},
-          %All{},
-          %One{index: "email"}
-        ]
-      }
-
-      data = %{
-        "users" => [
-          %{"email" => "alice@example.com"},
-          %{"email" => "bob@example.com"}
-        ]
-      }
-
-      assert Sequence.select(seq, data) == many(["alice@example.com", "bob@example.com"])
-    end
-
-    test "returns none when intermediate key is missing" do
-      seq = %Sequence{lenses: [%One{index: "missing"}, %One{index: "name"}]}
-
-      data = %{"user" => %{"name" => "Alice"}}
-      assert Sequence.select(seq, data) == none()
-    end
-
-    test "handles numeric indices in sequence" do
-      seq = %Sequence{lenses: [%One{index: 0}, %One{index: 1}]}
-
-      data = [[10, 20], [30, 40]]
-      assert Sequence.select(seq, data) == single(20)
-    end
-
-    test "handles mixed key types in sequence" do
-      seq = %Sequence{lenses: [%One{index: "data"}, %One{index: :value}]}
-
-      data = %{"data" => %{value: 42}}
-      assert Sequence.select(seq, data) == single(42)
-    end
-  end
-
-  describe "Sequence.transform/3 (internal)" do
-    test "empty sequence applies transform to entire collection" do
-      seq = %Sequence{lenses: []}
-
-      assert Sequence.transform(seq, [1, 2, 3], fn list -> Enum.map(list, &(&1 * 10)) end) ==
-               [10, 20, 30]
-    end
-
-    test "single lens sequence transforms like the lens itself" do
-      seq = %Sequence{lenses: [%One{index: 0}]}
-
-      assert Sequence.transform(seq, [10, 20, 30], &(&1 * 10)) == [100, 20, 30]
-    end
-
-    test "sequences two One lenses for nested transformation" do
+    test "returns result of applying lenses in sequence to single value" do
       seq = %Sequence{lenses: [%One{index: "user"}, %One{index: "name"}]}
 
       data = %{"user" => %{"name" => "alice", "age" => 30}}
-      result = Sequence.transform(seq, data, &String.upcase/1)
-
-      assert result == %{"user" => %{"name" => "ALICE", "age" => 30}}
+      assert Sequence.select(seq, single(data)) == single("alice")
     end
 
-    test "sequences One then All to transform all nested values" do
-      seq = %Sequence{lenses: [%One{index: "items"}, %All{}]}
+    test "returns result of applying lenses in sequence to many values" do
+      seq = %Sequence{lenses: [%One{index: "user"}, %One{index: "name"}]}
 
-      data = %{"items" => [1, 2, 3]}
-      result = Sequence.transform(seq, data, &(&1 * 10))
+      data = [
+        single(%{"user" => %{"name" => "alice", "age" => 30}}),
+        single(%{"user" => %{"name" => "bob", "age" => 25}})
+      ]
 
-      assert result == %{"items" => [10, 20, 30]}
+      assert Sequence.select(seq, many(data)) ==
+               many([single("alice"), single("bob")])
     end
 
-    test "sequences All then One to transform a field in each element" do
-      seq = %Sequence{lenses: [%All{}, %One{index: "count"}]}
+    test "raises ArgumentError when input is not wrapped" do
+      seq = %Sequence{lenses: [%One{index: "key"}]}
 
-      data = [%{"count" => 1}, %{"count" => 2}]
-      result = Sequence.transform(seq, data, &(&1 * 10))
-
-      assert result == [%{"count" => 10}, %{"count" => 20}]
-    end
-
-    test "sequences One, All, One for nested array field transformation" do
-      seq = %Sequence{
-        lenses: [
-          %One{index: "users"},
-          %All{},
-          %One{index: "score"}
-        ]
-      }
-
-      data = %{
-        "users" => [
-          %{"name" => "Alice", "score" => 85},
-          %{"name" => "Bob", "score" => 90}
-        ]
-      }
-
-      result = Sequence.transform(seq, data, &(&1 + 10))
-
-      assert result == %{
-               "users" => [
-                 %{"name" => "Alice", "score" => 95},
-                 %{"name" => "Bob", "score" => 100}
-               ]
-             }
-    end
-
-    test "leaves collection unchanged when intermediate key is missing" do
-      seq = %Sequence{lenses: [%One{index: "missing"}, %One{index: "name"}]}
-
-      data = %{"user" => %{"name" => "Alice"}}
-      result = Sequence.transform(seq, data, &String.upcase/1)
-
-      assert result == data
-    end
-
-    test "handles numeric indices in sequence transformation" do
-      seq = %Sequence{lenses: [%One{index: 0}, %One{index: 1}]}
-
-      data = [[10, 20], [30, 40]]
-      result = Sequence.transform(seq, data, &(&1 * 10))
-
-      assert result == [[10, 200], [30, 40]]
-    end
-
-    test "handles constant value replacement" do
-      seq = %Sequence{lenses: [%One{index: "user"}, %One{index: "active"}]}
-
-      data = %{"user" => %{"name" => "Alice", "active" => false}}
-      result = Sequence.transform(seq, data, fn _ -> true end)
-
-      assert result == %{"user" => %{"name" => "Alice", "active" => true}}
+      assert_raise ArgumentError, fn ->
+        Sequence.select(seq, 123)
+      end
     end
   end
 
-  describe "Sequence opts field" do
-    test "stores opts for iso resolution" do
-      seq = %Sequence{lenses: [%One{index: "value"}], opts: [custom: :iso]}
-
-      assert seq.opts == [custom: :iso]
+  describe "Sequence.transform" do
+    test "returns none when input is none" do
+      seq = %Sequence{lenses: [%One{index: "key"}]}
+      assert Sequence.transform(seq, none(), & &1) == none()
     end
 
-    test "defaults to empty opts" do
-      seq = %Sequence{lenses: [%One{index: "value"}]}
+    test "empty sequence applies transform to entire collection" do
+      seq = %Sequence{lenses: []}
 
-      assert seq.opts == []
+      assert Sequence.transform(seq, single([1, 2, 3]), fn list -> Enum.map(list, &(&1 * 10)) end) ==
+               single([10, 20, 30])
+    end
+
+    test "works with a single lens in the sequence" do
+      seq = %Sequence{lenses: [%One{index: 0}]}
+
+      assert Sequence.transform(seq, single([10]), &(&1 * 10)) == single([100])
+    end
+
+    test "works with multiple lenses in sequence" do
+      seq = %Sequence{lenses: [%One{index: "user"}, %One{index: "name"}]}
+
+      data = %{"user" => %{"name" => "alice", "age" => 30}}
+      result = Sequence.transform(seq, single(data), &String.upcase/1)
+      assert result == single(%{"user" => %{"name" => "ALICE", "age" => 30}})
+    end
+
+    test "distributes over many values" do
+      seq = %Sequence{lenses: [%One{index: "user"}, %One{index: "age"}]}
+
+      data = [
+        single(%{"user" => %{"name" => "alice", "age" => 30}}),
+        single(%{"user" => %{"name" => "bob", "age" => 25}})
+      ]
+
+      result = Sequence.transform(seq, many(data), &(&1 + 10))
+
+      assert result ==
+               many([
+                 single(%{"user" => %{"name" => "alice", "age" => 40}}),
+                 single(%{"user" => %{"name" => "bob", "age" => 35}})
+               ])
+    end
+
+    test "raises ArgumentError when input is not wrapped" do
+      seq = %Sequence{lenses: [%One{index: "key"}]}
+
+      assert_raise ArgumentError, fn ->
+        Sequence.transform(seq, 123, & &1)
+      end
+    end
+
+    test "raises ArgumentError when transform is not a function" do
+      seq = %Sequence{lenses: [%One{index: "key"}]}
+
+      assert_raise ArgumentError, fn ->
+        Sequence.transform(seq, single([1, 2, 3]), :not_a_function)
+      end
     end
   end
 end

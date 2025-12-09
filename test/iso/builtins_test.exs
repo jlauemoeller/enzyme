@@ -1,4 +1,5 @@
 defmodule Enzyme.Iso.BuiltinsTest do
+  @moduledoc false
   use ExUnit.Case, async: true
 
   alias Enzyme.Iso
@@ -48,6 +49,7 @@ defmodule Enzyme.Iso.BuiltinsTest do
   describe ":float builtin" do
     test "converts string to float (forward)" do
       iso = Builtins.float()
+      assert iso.forward.("3") == 3.0
       assert iso.forward.("3.14") == 3.14
       assert iso.forward.("-2.5") == -2.5
       assert iso.forward.("0.0") == 0.0

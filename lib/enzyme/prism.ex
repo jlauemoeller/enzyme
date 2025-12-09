@@ -26,6 +26,7 @@ defmodule Enzyme.Prism do
   Prisms support retagging extracted tuples using the `->` arrow syntax:
 
   **Shorthand (tag-only change):**
+
   | Pattern | Input | Output |
   |---------|-------|--------|
   | `:{:ok, v} -> :success` | `{:ok, 5}` | `{:success, 5}` |
@@ -34,6 +35,7 @@ defmodule Enzyme.Prism do
   | `:{:ok, _} -> :success` | `{:ok, 5}` | `{:success, 5}` (filter-only retag) |
 
   **Explicit assembly (reorder, drop, duplicate):**
+
   | Pattern | Input | Output |
   |---------|-------|--------|
   | `:{:pair, a, b} -> :{:swapped, b, a}` | `{:pair, 1, 2}` | `{:swapped, 2, 1}` |
@@ -44,36 +46,27 @@ defmodule Enzyme.Prism do
 
       # Create a prism for {:ok, value} tuples
       iex> prism = Enzyme.Prism.new(:ok, [:value])
-      iex> Enzyme.Prism.select(prism, {:ok, 5})
+      iex> Enzyme.Prism.select(prism, %Enzyme.Single{value: {:ok, 5}})
       %Enzyme.Single{value: 5}
 
       iex> prism = Enzyme.Prism.new(:ok, [:value])
-      iex> Enzyme.Prism.select(prism, {:error, "oops"})
+      iex> Enzyme.Prism.select(prism, %Enzyme.Single{value: {:error, "oops"}})
       %Enzyme.None{}
 
       # Create a prism that extracts multiple values
       iex> prism = Enzyme.Prism.new(:rectangle, [:w, :h])
-      iex> Enzyme.Prism.select(prism, {:rectangle, 3, 4})
+      iex> Enzyme.Prism.select(prism, %Enzyme.Single{value: {:rectangle, 3, 4}})
       %Enzyme.Single{value: {3, 4}}
 
       # Create a prism that ignores some positions
       iex> prism = Enzyme.Prism.new(:rectangle, [nil, :h])
-      iex> Enzyme.Prism.select(prism, {:rectangle, 3, 4})
+      iex> Enzyme.Prism.select(prism, %Enzyme.Single{value: {:rectangle, 3, 4}})
       %Enzyme.Single{value: 4}
 
       # Filter-only prism (all positions ignored)
       iex> prism = Enzyme.Prism.new(:ok, [nil])
-      iex> Enzyme.Prism.select(prism, {:ok, 5})
+      iex> Enzyme.Prism.select(prism, %Enzyme.Single{value: {:ok, 5}})
       %Enzyme.Single{value: {:ok, 5}}
-
-      # Retag with shorthand syntax (use the high-level Enzyme API)
-      iex> Enzyme.select({:ok, 42}, ":{:ok, v} -> :success")
-      {:success, 42}
-
-      # Retag with explicit assembly
-      iex> Enzyme.select({:point3d, 1, 2, 3}, ":{:point3d, x, y, z} -> :{:point2d, x, z}")
-      {:point2d, 1, 3}
-
   """
 
   defstruct [:tag, :pattern, :rest, :output_tag, :output_pattern]
@@ -81,7 +74,10 @@ defmodule Enzyme.Prism do
   import Enzyme.Guards
   import Enzyme.Wraps
 
+  alias Enzyme.Many
+  alias Enzyme.None
   alias Enzyme.Prism
+  alias Enzyme.Single
   alias Enzyme.Types
 
   @type t :: %Prism{
@@ -131,60 +127,101 @@ defmodule Enzyme.Prism do
   For non-matching tuples, returns `%Enzyme.None{}` or filters them out of lists.
   """
 
-  @spec select(Prism.t(), Types.collection() | Types.wrapped()) :: Types.wrapped()
+  @spec select(Prism.t(), Types.wrapped()) :: Types.wrapped()
 
-  def select(%Prism{} = prism, %Enzyme.Single{value: value}) do
-    select(prism, value)
+  def select(%Prism{}, %None{} = none) do
+    none
   end
 
-  def select(%Prism{} = prism, %Enzyme.Many{values: collection}) when is_list(collection) do
-    results =
-      collection
-      |> Enum.map(&select(prism, &1))
-      |> Enum.filter(fn
-        %Enzyme.None{} -> false
-        _ -> true
-      end)
-      |> Enum.map(&unwrap/1)
-
-    many(results)
-  end
-
-  def select(%Prism{} = prism, list) when is_list(list) do
-    results =
-      list
-      |> Enum.map(&select(prism, &1))
-      |> Enum.filter(fn
-        %Enzyme.None{} -> false
-        _ -> true
-      end)
-      |> Enum.map(&unwrap/1)
-
-    many(results)
-  end
-
-  def select(%Prism{tag: tag, rest: true} = prism, tuple)
+  def select(%Prism{} = prism, %Single{value: tuple})
+      when is_tuple(tuple)
       when is_tuple(tuple) and tuple_size(tuple) >= 1 do
-    if elem(tuple, 0) == tag do
-      extracted = extract_rest(tuple)
-      single(apply_output_assembly(prism, extracted, tuple))
+    if elem(tuple, 0) == prism.tag &&
+         (is_nil(prism.pattern) ||
+            length(prism.pattern) == tuple_size(tuple) - 1) do
+      single(reshape(prism, tuple))
     else
       none()
     end
   end
 
-  def select(%Prism{tag: tag, pattern: pattern} = prism, tuple)
-      when is_tuple(tuple) and tuple_size(tuple) >= 1 do
-    if elem(tuple, 0) == tag and tuple_size(tuple) == length(pattern) + 1 do
-      extracted = extract_pattern(tuple, pattern)
-      single(apply_output_assembly(prism, extracted, tuple))
-    else
-      none()
-    end
-  end
-
-  def select(%Prism{}, _other) do
+  def select(%Prism{}, %Single{}) do
     none()
+  end
+
+  def select(%Prism{} = prism, %Many{values: list}) when is_list(list) do
+    selection =
+      Enum.reduce(list, [], fn item, acc ->
+        case select(prism, item) do
+          %None{} -> acc
+          %Single{} = value -> [value | acc]
+          %Many{} = many -> [many | acc]
+        end
+      end)
+
+    many(Enum.reverse(selection))
+  end
+
+  def select(%Prism{}, invalid) do
+    raise ArgumentError,
+          "#{__MODULE__}.select/2 expected a wrapped value, got: #{inspect(invalid)}"
+  end
+
+  defp reshape(%Prism{rest: false} = prism, original_tuple) when is_tuple(original_tuple) do
+    named_values =
+      prism.pattern
+      |> Enum.with_index(1)
+      |> Enum.filter(fn {name, _idx} -> name != nil end)
+      |> Enum.map(fn {name, idx} -> {name, elem(original_tuple, idx)} end)
+
+    output =
+      case named_values do
+        [] ->
+          maybe_retag_tuple(original_tuple, prism.output_tag)
+
+        _ ->
+          assemble(prism, named_values)
+      end
+
+    output
+  end
+
+  defp reshape(%Prism{rest: true} = prism, original_tuple) when is_tuple(original_tuple) do
+    tail =
+      original_tuple
+      |> Tuple.to_list()
+      |> tl()
+
+    cond do
+      prism.output_tag ->
+        List.to_tuple([prism.output_tag | tail])
+
+      length(tail) == 1 ->
+        hd(tail)
+
+      true ->
+        List.to_tuple(tail)
+    end
+  end
+
+  defp assemble(%Prism{output_pattern: nil, output_tag: nil}, named_values) do
+    values = Enum.map(named_values, fn {_name, value} -> value end)
+
+    case values do
+      [single] -> single
+      many -> List.to_tuple(many)
+    end
+  end
+
+  defp assemble(%Prism{output_pattern: nil, output_tag: tag}, named_values) do
+    values = Enum.map(named_values, fn {_name, value} -> value end)
+    List.to_tuple([tag | values])
+  end
+
+  defp assemble(%Prism{output_pattern: output_pattern} = prism, named_values) do
+    value_by_name = Map.new(named_values)
+    values = Enum.map(output_pattern, fn name -> Map.fetch!(value_by_name, name) end)
+    List.to_tuple([prism.output_tag || prism.tag | values])
   end
 
   @doc """
@@ -195,19 +232,13 @@ defmodule Enzyme.Prism do
   the new value(s) in the same shape.
   """
 
-  @spec transform(Prism.t(), Types.collection() | Types.wrapped(), (any() -> any())) ::
-          Types.wrapped()
+  @spec transform(Prism.t(), Types.wrapped(), (any() -> any())) :: Types.wrapped()
 
-  def transform(%Prism{} = prism, wrapped, fun)
-      when is_wrapped(wrapped) and is_transform(fun) do
-    transform_wrapped(wrapped, fun, &transform(prism, &1, &2))
+  def transform(%Prism{}, %None{} = none, _fun) do
+    none
   end
 
-  def transform(%Prism{} = prism, list, fun) when is_list(list) and is_transform(fun) do
-    many(Enum.map(list, fn item -> unwrap(transform(prism, item, fun)) end))
-  end
-
-  def transform(%Prism{tag: tag, rest: true} = prism, tuple, fun)
+  def transform(%Prism{tag: tag, rest: true} = prism, %Single{value: tuple}, fun)
       when is_tuple(tuple) and tuple_size(tuple) >= 1 and is_transform(fun) do
     if elem(tuple, 0) == tag do
       extracted = extract_rest(tuple)
@@ -219,7 +250,7 @@ defmodule Enzyme.Prism do
     end
   end
 
-  def transform(%Prism{tag: tag, pattern: pattern} = prism, tuple, fun)
+  def transform(%Prism{tag: tag, pattern: pattern} = prism, %Single{value: tuple}, fun)
       when is_tuple(tuple) and tuple_size(tuple) >= 1 and is_transform(fun) do
     if elem(tuple, 0) == tag and tuple_size(tuple) == length(pattern) + 1 do
       extracted = extract_pattern(tuple, pattern)
@@ -237,8 +268,18 @@ defmodule Enzyme.Prism do
     end
   end
 
-  def transform(%Prism{}, other, _fun) do
-    single(other)
+  def transform(%Prism{}, %Single{} = single, _fun) do
+    single
+  end
+
+  def transform(%Prism{} = prism, %Many{values: list}, fun)
+      when is_list(list) and is_transform(fun) do
+    many(Enum.map(list, fn item -> transform(prism, item, fun) end))
+  end
+
+  def transform(%Prism{}, value, fun) do
+    raise ArgumentError,
+          "#{__MODULE__}.transform/2 expected a wrapped value and a transform function of arity 1, got: #{inspect(value)} and #{inspect(fun)}"
   end
 
   # Extract all elements after the tag
@@ -275,64 +316,6 @@ defmodule Enzyme.Prism do
     Enum.all?(pattern, &is_nil/1)
   end
 
-  # Apply output assembly after extraction (for select operations)
-  defp apply_output_assembly(%Prism{output_tag: nil}, extracted, _original_tuple) do
-    # No retagging - return extracted value as-is
-    extracted
-  end
-
-  defp apply_output_assembly(
-         %Prism{output_tag: output_tag, output_pattern: nil, pattern: pattern},
-         extracted,
-         original_tuple
-       )
-       when is_list(pattern) do
-    # Shorthand retag: keep extracted values, change tag
-    # Special case: filter-only (all nils) retags whole tuple
-    if filter_only?(pattern) do
-      maybe_retag_tuple(original_tuple, output_tag)
-    else
-      # Wrap extracted value(s) with new tag
-      assemble_output(output_tag, extracted)
-    end
-  end
-
-  defp apply_output_assembly(
-         %Prism{output_tag: output_tag, output_pattern: nil, rest: true},
-         extracted,
-         _original_tuple
-       ) do
-    # Shorthand retag with rest pattern: keep all extracted, change tag
-    assemble_output(output_tag, extracted)
-  end
-
-  defp apply_output_assembly(
-         %Prism{output_tag: output_tag, output_pattern: output_pattern, pattern: pattern},
-         extracted,
-         _original_tuple
-       )
-       when is_list(pattern) do
-    # Explicit assembly: reassemble according to output_pattern
-    reassemble_with_pattern(output_tag, extracted, pattern, output_pattern)
-  end
-
-  defp apply_output_assembly(
-         %Prism{output_tag: output_tag, output_pattern: output_pattern, rest: true},
-         extracted,
-         _original_tuple
-       ) do
-    # Explicit assembly with rest pattern
-    # extracted is already the values, reassemble according to output_pattern
-    if output_pattern == :rest do
-      # output pattern is also rest - keep all
-      assemble_output(output_tag, extracted)
-    else
-      # Reassemble specific pattern from rest extraction
-      extracted_list = if is_tuple(extracted), do: Tuple.to_list(extracted), else: [extracted]
-      reassemble_from_list(output_tag, extracted_list, output_pattern)
-    end
-  end
-
   # Retag a tuple (change its first element)
   defp maybe_retag_tuple(tuple, nil) when is_tuple(tuple) do
     tuple
@@ -341,36 +324,6 @@ defmodule Enzyme.Prism do
   defp maybe_retag_tuple(tuple, new_tag) when is_tuple(tuple) do
     [_ | rest] = Tuple.to_list(tuple)
     List.to_tuple([new_tag | rest])
-  end
-
-  # Assemble output from extracted value(s) - wraps with tag
-  defp assemble_output(tag, extracted) do
-    if is_tuple(extracted) do
-      # Already a tuple - wrap with tag
-      List.to_tuple([tag | Tuple.to_list(extracted)])
-    else
-      # Single value - make tuple
-      {tag, extracted}
-    end
-  end
-
-  # Reassemble extracted values according to output pattern
-  defp reassemble_with_pattern(output_tag, extracted, input_pattern, output_pattern) do
-    # Build map of extracted names to values
-    extracted_values = if is_tuple(extracted), do: Tuple.to_list(extracted), else: [extracted]
-
-    extracted_names =
-      input_pattern
-      |> Enum.with_index()
-      |> Enum.filter(fn {spec, _idx} -> spec != nil end)
-      |> Enum.map(fn {spec, _idx} -> spec end)
-
-    name_to_value = Enum.zip(extracted_names, extracted_values) |> Map.new()
-
-    # Assemble according to output pattern
-    output_values = Enum.map(output_pattern, fn name -> Map.fetch!(name_to_value, name) end)
-
-    List.to_tuple([output_tag | output_values])
   end
 
   # Reassemble from a list of extracted values (for rest pattern with explicit output)

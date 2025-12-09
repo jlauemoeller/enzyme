@@ -11,8 +11,11 @@ defmodule Enzyme.Sequence do
   import Enzyme.Guards
   import Enzyme.Wraps
 
+  alias Enzyme.Many
+  alias Enzyme.None
   alias Enzyme.Protocol
   alias Enzyme.Sequence
+  alias Enzyme.Single
   alias Enzyme.Types
 
   @type t :: %Sequence{
@@ -21,14 +24,31 @@ defmodule Enzyme.Sequence do
         }
 
   @doc """
-  Selects elements from a collection by applying each lens in sequence. Returns
-  the value selected by the last lens in the sequence.
+  Selects elements from a collection of wrapped values by applying each lens in sequence. Returns
+  the wrapped value selected by the last lens in the sequence.
   """
 
-  @spec select(Sequence.t(), Types.collection() | Types.wrapped()) :: Types.wrapped()
+  @spec select(Sequence.t(), Types.wrapped()) :: Types.wrapped()
 
-  def select(%Sequence{lenses: lenses}, collection) when is_collection(collection) do
-    select_next(collection, lenses)
+  def select(%Sequence{}, %None{} = none) do
+    none
+  end
+
+  def select(%Sequence{lenses: []}, %Single{} = data) do
+    data
+  end
+
+  def select(%Sequence{lenses: lenses}, %Single{} = data) do
+    select_next(data, lenses)
+  end
+
+  def select(%Sequence{lenses: lenses}, %Many{values: list}) when is_list(list) do
+    many(Enum.map(list, fn item -> select_next(item, lenses) end))
+  end
+
+  def select(%Sequence{}, invalid) do
+    raise ArgumentError,
+          "#{__MODULE__}.select/2 expected a wrapped value, got: #{inspect(invalid)}"
   end
 
   @doc """
@@ -37,37 +57,55 @@ defmodule Enzyme.Sequence do
   in the sequence.
   """
 
-  @spec transform(Sequence.t(), Types.collection() | Types.wrapped(), (any() -> any())) ::
-          Types.wrapped()
+  @spec transform(Sequence.t(), Types.wrapped(), (any() -> any())) :: Types.wrapped()
 
-  def transform(%Sequence{lenses: lenses}, collection, transform)
-      when is_collection(collection) and is_transform(transform) do
-    transform_next(collection, lenses, transform)
+  def transform(%Sequence{}, %None{} = none, _transform) do
+    none
   end
 
-  defp select_next(collection, []), do: collection
-
-  defp select_next(collection, [next | rest]) do
-    Protocol.select(next, collection) |> select_next(rest)
+  def transform(%Sequence{lenses: []}, %Single{} = data, fun) when is_transform(fun) do
+    single(fun.(unwrap!(data)))
   end
 
-  defp transform_next(nil, _, _), do: nil
-
-  defp transform_next(collection, [], transform) do
-    transform.(collection)
+  def transform(%Sequence{lenses: lenses}, %Single{} = data, fun)
+      when is_transform(fun) do
+    transform_next(data, lenses, fun)
   end
 
-  defp transform_next(collection, [lens], transform) do
-    Protocol.transform(lens, collection, transform) |> unwrap()
+  def transform(%Sequence{lenses: lenses}, %Many{values: list}, fun)
+      when is_list(list) and is_transform(fun) do
+    many(Enum.map(list, fn item -> transform_next(item, lenses, fun) end))
   end
 
-  defp transform_next(collection, [next | rest], transform) do
-    result =
-      Protocol.transform(next, collection, fn item ->
-        transform_next(item, rest, transform)
-      end)
+  def transform(%Sequence{}, invalid, fun) when is_transform(fun) do
+    raise ArgumentError,
+          "#{__MODULE__}.transform/3 expected a wrapped value, got: #{inspect(invalid)}"
+  end
 
-    result |> unwrap()
+  def transform(%Sequence{}, wrapped, fun)
+      when is_wrapped(wrapped) and not is_transform(fun) do
+    raise ArgumentError,
+          "#{__MODULE__}.transform/3 expected a transformation function of arity 1, got: #{inspect(fun)}"
+  end
+
+  defp select_next(value, []) do
+    value
+  end
+
+  defp select_next(value, [lens | rest]) do
+    lens
+    |> Protocol.select(value)
+    |> select_next(rest)
+  end
+
+  defp transform_next(data, [], fun) do
+    single(fun.(unwrap!(data)))
+  end
+
+  defp transform_next(data, [next | rest], fun) do
+    Protocol.transform(next, data, fn item ->
+      unwrap!(transform_next(single(item), rest, fun))
+    end)
   end
 end
 
@@ -75,9 +113,9 @@ defimpl Enzyme.Protocol, for: Enzyme.Sequence do
   alias Enzyme.Types
   alias Enzyme.Sequence
 
-  @spec select(Sequence.t(), Types.collection() | Types.wrapped()) :: any()
+  @spec select(Sequence.t(), Types.wrapped()) :: any()
   def select(lens, collection), do: Sequence.select(lens, collection)
 
-  @spec transform(Sequence.t(), Types.collection() | Types.wrapped(), (any() -> any())) :: any()
+  @spec transform(Sequence.t(), Types.wrapped(), (any() -> any())) :: any()
   def transform(lens, collection, fun), do: Sequence.transform(lens, collection, fun)
 end

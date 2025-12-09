@@ -14,6 +14,7 @@ defmodule Enzyme.Filter do
   alias Enzyme.Expression
   alias Enzyme.Filter
   alias Enzyme.Many
+  alias Enzyme.None
   alias Enzyme.Single
   alias Enzyme.Types
 
@@ -23,14 +24,14 @@ defmodule Enzyme.Filter do
         }
 
   @doc """
-  Selects elements from a collection based on the predicate function.
+  Selects elements based on a predicate function.
 
-  For `%Enzyme.Single{value: value}`, it returns `%Enzyme.Single{value: value}`
-  if the predicate returns true, otherwise returns %Enzyme.None{}.
+  - For `%Enzyme.Single{value: value}`, it returns `%Enzyme.Single{value: value}`
+    if the predicate returns true, otherwise returns %Enzyme.None{}.
 
-  For `%Enzyme.Many{values: list}`, returns an `Enzyme.Many{}` containing only
-  the elements for which the predicate returns true. If no elements match,
-  returns `%Enzyme.Many{values: []}`.
+  - For `%Enzyme.Many{values: list}`, returns an `Enzyme.Many{}` containing only
+    the elements for which the predicate returns true. If no elements match,
+    returns `%Enzyme.Many{values: []}`.
 
   ## Examples
 
@@ -48,67 +49,75 @@ defmodule Enzyme.Filter do
 
   ```
   iex> lens = %Enzyme.Filter{predicate: fn x -> x > 15 end}
-  iex> Enzyme.Filter.select(lens, %Enzyme.Many{values: [10, 20, 30]})
-  %Enzyme.Many{values: [20, 30]}
+  iex> Enzyme.Filter.select(lens, %Enzyme.Many{values: [%Enzyme.Single{value: 10}, %Enzyme.Single{value: 20}, %Enzyme.Single{value: 30}]})
+  %Enzyme.Many{values: [%Enzyme.Single{value: 20}, %Enzyme.Single{value: 30}]}
   ```
 
   ```
   iex> lens = %Enzyme.Filter{predicate: fn x -> x > 100 end}
-  iex> Enzyme.Filter.select(lens, %Enzyme.Many{values: [10, 20, 30]})
+  iex> Enzyme.Filter.select(lens, %Enzyme.Many{values: [%Enzyme.Single{value: 10}, %Enzyme.Single{value: 20}, %Enzyme.Single{value: 30}]})
   %Enzyme.Many{values: []}
   ```
 
   ```
   iex> lens = %Enzyme.Filter{predicate: fn x -> x > 15 end}
-  iex> Enzyme.Filter.select(lens, [10, 20, 30])
-  %Enzyme.Many{values: [20, 30]}
-  ```
-
-  ```
-  iex> lens = %Enzyme.Filter{predicate: fn x -> x > 15 end}
-  iex> Enzyme.Filter.select(lens, {10, 20, 30})
-  %Enzyme.Many{values: {20, 30}}
+  iex> Enzyme.Filter.select(lens, %Enzyme.Single{value: {10, 20, 30}})
+  %Enzyme.Many{values: [%Enzyme.Single{value: 20}, %Enzyme.Single{value: 30}]}
   ```
 
   ```
   iex> lens = %Enzyme.Filter{predicate: fn %{active: a} -> a end}
-  iex> Enzyme.Filter.select(lens, %Enzyme.Many{values: [%{active: true, name: "a"}, %{active: false, name: "b"}]})
-  %Enzyme.Many{values: [%{active: true, name: "a"}]}
+  iex> Enzyme.Filter.select(lens, %Enzyme.Many{values: [%Enzyme.Single{value: %{active: true, name: "a"}}, %Enzyme.Single{value: %{active: false, name: "b"}}]})
+  %Enzyme.Many{values: [%Enzyme.Single{value: %{active: true, name: "a"}}]}
   ```
   """
 
-  @spec select(Filter.t(), Types.collection() | Types.wrapped()) :: Types.wrapped()
+  @spec select(Filter.t(), Types.wrapped()) :: Types.wrapped()
+
+  def select(%Filter{}, %None{} = none) do
+    none
+  end
+
+  def select(%Filter{predicate: pred}, %Single{value: list}) when is_list(list) do
+    many(Enum.filter(list, pred) |> Enum.map(&single/1))
+  end
+
+  def select(%Filter{predicate: pred}, %Single{value: tuple}) when is_tuple(tuple) do
+    many(Enum.filter(Tuple.to_list(tuple), pred) |> Enum.map(&single/1))
+  end
 
   def select(%Filter{predicate: pred}, %Single{value: value}) do
     if pred.(value), do: single(value), else: none()
   end
 
-  def select(%Filter{predicate: pred}, %Many{values: collection})
-      when is_collection(collection) do
-    many(Enum.filter(collection, pred))
-  end
+  def select(%Filter{} = lens, %Many{values: list}) when is_list(list) do
+    selection =
+      Enum.reduce(list, [], fn item, acc ->
+        case select(lens, item) do
+          %None{} -> acc
+          selected -> [selected | acc]
+        end
+      end)
 
-  def select(%Filter{} = lens, tuple) when is_tuple(tuple) do
-    many(over_tuple(tuple, &select(lens, many(&1))))
-  end
-
-  def select(%Filter{predicate: pred}, list) when is_list(list) do
-    many(Enum.filter(list, pred))
+    many(Enum.reverse(selection))
   end
 
   def select(%Filter{}, invalid) do
     raise ArgumentError,
-          "Cannot filter #{inspect(invalid)}: Filter requires a list, tuple, or wrapped value"
+          "#{__MODULE__}.select/2 expected a wrapped value, got: #{inspect(invalid)}"
   end
 
   @doc """
-  Transforms elements in a collection that match the predicate.
+  Transforms elements that match the predicate.
 
-  For `Enzyme.Single{value: value}`, applies the transform only if the predicate
-  returns true, otherwise returns the value unchanged.
+  - For `Enzyme.Single{value: value}`, applies the transform only if the predicate
+    returns true, otherwise returns the value unchanged. Returns
+    `%Enzyme.Single{value: transformed}`.
 
-  For `Enzyme.Many{values: list}`, applies the transform only to elements for
-  which the predicate returns true; other elements remain unchanged.
+  - For `Enzyme.Many{values: list}`, applies the transform only to elements for
+    which the predicate returns true; other elements remain unchanged. In this
+    case the function returns `%Enzyme.Many{values: transformed_list}`. The
+    length of the list remains the same.
 
   ## Examples
 
@@ -125,57 +134,38 @@ defmodule Enzyme.Filter do
   ```
 
   ```
-  iex> lens = %Enzyme.Filter{predicate: fn x -> x > 15 end}
-  iex> Enzyme.Filter.transform(lens, %Enzyme.Many{values: [10, 20, 30]}, &(&1 * 10))
-  %Enzyme.Many{values: [10, 200, 300]}
+  iex> lens = %Enzyme.Filter{predicate: fn x -> length(x) > 2 end}
+  iex> Enzyme.Filter.transform(lens, %Enzyme.Single{value: [1, 2, 3]}, &(Enum.join(&1, ", ")))
+  %Enzyme.Single{value: "1, 2, 3"}
   ```
 
   ```
-  iex> lens = %Enzyme.Filter{predicate: fn x -> x > 15 end}
-  iex> Enzyme.Filter.transform(lens, [10, 20, 30], &(&1 * 10))
-  %Enzyme.Many{values: [10, 200, 300]}
-  ```
-
-  ```
-  iex> lens = %Enzyme.Filter{predicate: fn x -> x > 15 end}
-  iex> Enzyme.Filter.transform(lens, {10, 20, 30}, &(&1 * 10))
-  %Enzyme.Many{values: {10, 200, 300}}
-  ```
-
-  ```
-  iex> lens = %Enzyme.Filter{predicate: fn %{active: a} -> a end}
-  iex> Enzyme.Filter.transform(lens, %Enzyme.Many{values: [%{active: true, n: 1}, %{active: false, n: 2}]}, &Map.put(&1, :n, &1.n * 10))
-  %Enzyme.Many{values: [%{active: true, n: 10}, %{active: false, n: 2}]}
+  iex> lens = %Enzyme.Filter{predicate: fn x -> length(x) > 2 end}
+  iex> Enzyme.Filter.transform(lens, %Enzyme.Many{values: [%Enzyme.Single{value: [1, 2]}, %Enzyme.Single{value: [3, 4, 5]}]}, &(Enum.join(&1, ", ")))
+  %Enzyme.Many{values: [%Enzyme.Single{value: [1, 2]}, %Enzyme.Single{value: "3, 4, 5"}]}
   ```
   """
 
-  @spec transform(Filter.t(), Types.collection() | Types.wrapped(), (any() -> any())) ::
-          Types.wrapped()
+  @spec transform(Filter.t(), Types.wrapped(), (any() -> any())) :: Types.wrapped()
 
-  def transform(%Filter{predicate: pred}, %Enzyme.Single{value: value}, fun)
+  def transform(%Filter{predicate: pred}, %Enzyme.Single{value: value} = wrapped, fun)
       when is_transform(fun) do
-    if pred.(value), do: single(fun.(value)), else: single(value)
+    if pred.(value), do: single(fun.(value)), else: wrapped
   end
 
-  def transform(%Filter{predicate: pred}, %Enzyme.Many{values: collection}, fun)
-      when is_collection(collection) and is_transform(fun) do
-    many(conditionally_map(collection, pred, fun))
+  def transform(%Filter{} = filter, %Enzyme.Many{values: list}, fun)
+      when is_list(list) and is_transform(fun) do
+    many(Enum.map(list, fn item -> transform(filter, item, fun) end))
   end
 
-  def transform(%Filter{} = lens, tuple, fun) when is_tuple(tuple) and is_transform(fun) do
-    many(over_tuple(tuple, &transform(lens, many(&1), fun)))
+  def transform(%Filter{}, invalid, fun) when is_transform(fun) do
+    raise ArgumentError,
+          "#{__MODULE__}.transform/3 expected a wrapped value, got: #{inspect(invalid)}"
   end
 
-  def transform(%Filter{predicate: pred}, list, fun) when is_list(list) and is_transform(fun) do
-    many(conditionally_map(list, pred, fun))
-  end
-
-  def transform(%Filter{predicate: pred}, map, fun) when is_map(map) and is_transform(fun) do
-    if pred.(map), do: single(fun.(map)), else: single(map)
-  end
-
-  defp conditionally_map(collection, pred, fun) do
-    Enum.map(collection, fn item -> if pred.(item), do: fun.(item), else: item end)
+  def transform(%Filter{}, _invalid, fun) do
+    raise ArgumentError,
+          "#{__MODULE__}.transform/3 expected a function of arity 1, got: #{inspect(fun)}"
   end
 end
 
@@ -183,9 +173,9 @@ defimpl Enzyme.Protocol, for: Enzyme.Filter do
   alias Enzyme.Types
   alias Enzyme.Filter
 
-  @spec select(Filter.t(), Types.collection() | Types.wrapped()) :: any()
+  @spec select(Filter.t(), Types.wrapped()) :: any()
   def select(lens, collection), do: Filter.select(lens, collection)
 
-  @spec transform(Filter.t(), Types.collection() | Types.wrapped(), (any() -> any())) :: any()
+  @spec transform(Filter.t(), Types.wrapped(), (any() -> any())) :: any()
   def transform(lens, collection, fun), do: Filter.transform(lens, collection, fun)
 end

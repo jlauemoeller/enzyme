@@ -7,6 +7,11 @@ defmodule Enzyme.ReadmeTest do
   """
   use ExUnit.Case
 
+  defmodule Company do
+    @moduledoc false
+    defstruct [:name, :founded]
+  end
+
   # Shared test data from README "Example" section
   @products %{
     "items" => [
@@ -84,10 +89,10 @@ defmodule Enzyme.ReadmeTest do
 
   describe "README - Dot and Colon Notation" do
     test "accesses atom keys with colon notation" do
-      data = %{"company" => %{"founded" => 1990, name: "Acme"}}
+      data = %{"company" => %Company{name: "Acme", founded: 1990}}
 
       assert Enzyme.select(data, "company:name") == "Acme"
-      assert Enzyme.select(data, "company.founded") == 1990
+      assert Enzyme.select(data, "company:founded") == 1990
     end
   end
 

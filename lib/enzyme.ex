@@ -333,7 +333,7 @@ defmodule Enzyme do
   def select(collection, lens, opts) when is_collection(collection) and is_lens(lens) do
     lens
     |> resolve_isos(opts)
-    |> Protocol.select(collection)
+    |> Protocol.select(single(collection))
     |> unwrap()
   end
 
@@ -400,7 +400,7 @@ defmodule Enzyme do
       when is_collection(collection) and is_lens(lens) and is_transform(fun) and is_list(opts) do
     lens
     |> resolve_isos(opts)
-    |> Protocol.transform(collection, fun)
+    |> Protocol.transform(single(collection), fun)
     |> unwrap()
   end
 
