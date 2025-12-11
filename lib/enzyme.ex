@@ -333,6 +333,7 @@ defmodule Enzyme do
   def select(collection, lens, opts) when is_collection(collection) and is_lens(lens) do
     lens
     |> resolve_isos(opts)
+    |> configure_tracer(opts)
     |> Protocol.select(single(collection))
     |> unwrap()
   end
@@ -400,6 +401,7 @@ defmodule Enzyme do
       when is_collection(collection) and is_lens(lens) and is_transform(fun) and is_list(opts) do
     lens
     |> resolve_isos(opts)
+    |> configure_tracer(opts)
     |> Protocol.transform(single(collection), fun)
     |> unwrap()
   end
@@ -438,12 +440,11 @@ defmodule Enzyme do
   end
 
   # Handle Filter with unresolved isos in expression
-  defp resolve_isos(%Filter{predicate: nil, expression: expr} = filter, opts)
-       when not is_nil(expr) do
+  defp resolve_isos(%Filter{predicate: nil, expression: expr} = filter, opts) do
     # Resolve isos in the expression, then compile to predicate
     resolved_expr = Enzyme.ExpressionParser.resolve_expression_isos(expr, opts)
     predicate = Enzyme.ExpressionParser.compile(resolved_expr)
-    %Filter{filter | predicate: predicate, expression: nil}
+    %Filter{filter | predicate: predicate}
   end
 
   # Pass through other lens types unchanged (Iso, already-resolved Filters, etc.)
@@ -455,5 +456,14 @@ defmodule Enzyme do
     "Iso '#{name}' is not resolved. " <>
       "Provide it via opts (e.g., #{name}: my_iso) or use a builtin. " <>
       "Available builtins: #{builtins}"
+  end
+
+  defp configure_tracer(%Sequence{} = seq, opts) do
+    trace_opt = Keyword.get(opts, :__trace__, false)
+    %Sequence{seq | opts: Keyword.put(seq.opts, :__trace__, trace_opt)}
+  end
+
+  defp configure_tracer(lens, _opts) do
+    lens
   end
 end

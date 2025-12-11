@@ -138,3 +138,7 @@ defimpl Enzyme.Protocol, for: Enzyme.All do
   @spec transform(All.t(), Types.wrapped(), (any() -> any())) :: any()
   def transform(lens, collection, fun), do: All.transform(lens, collection, fun)
 end
+
+defimpl String.Chars, for: Enzyme.All do
+  def to_string(%Enzyme.All{}), do: "[*]"
+end

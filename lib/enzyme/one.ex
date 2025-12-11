@@ -229,3 +229,9 @@ defimpl Enzyme.Protocol, for: Enzyme.One do
   @spec transform(One.t(), Types.wrapped(), (any() -> any())) :: any()
   def transform(lens, collection, fun), do: One.transform(lens, collection, fun)
 end
+
+defimpl String.Chars, for: Enzyme.One do
+  def to_string(%Enzyme.One{index: index}) when is_binary(index), do: ".#{index}"
+  def to_string(%Enzyme.One{index: index}) when is_atom(index), do: ":#{index}"
+  def to_string(%Enzyme.One{index: index}) when is_integer(index), do: "[#{index}]"
+end

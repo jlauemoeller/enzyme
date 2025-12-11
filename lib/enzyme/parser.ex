@@ -317,7 +317,7 @@ defmodule Enzyme.Parser do
             %Filter{predicate: nil, expression: expression}
           else
             predicate = Enzyme.ExpressionParser.compile(expression)
-            %Filter{predicate: predicate, expression: nil}
+            %Filter{predicate: predicate, expression: expression}
           end
 
         {filter, remaining}

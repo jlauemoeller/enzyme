@@ -177,3 +177,7 @@ defimpl Enzyme.Protocol, for: Enzyme.Iso do
   @spec transform(Iso.t(), Types.wrapped(), (any() -> any())) :: any()
   def transform(lens, collection, fun), do: Iso.transform(lens, collection, fun)
 end
+
+defimpl String.Chars, for: Enzyme.Iso do
+  def to_string(%Enzyme.Iso{}), do: "::iso"
+end

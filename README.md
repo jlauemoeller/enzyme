@@ -146,6 +146,36 @@ Enzyme.select(
 
 Filter expressions use `compare/2` for comparisons if defined for the data type, so you can safely compare e.g dates without worrying about Erlang term ordering getting in the way.
 
+## Tracing
+
+Enzyme supports tracing to help debug complex paths. Pass a `:__trace__` option to `Enzyme.select/3` or `Enzyme.transform/4` to see how the lens focus moves through the data structure:
+
+```elixir
+data = [
+  single(%{"user" => %{"name" => "alice", "age" => 30}}),
+  single(%{"user" => %{"name" => "bob", "age" => 25}})
+]
+
+Enzyme.select("user.name", data, [__trace__: true])
+#  ⏺ many(single(%{"user" => %{"age" => 30, "name" => "alice"}}), single(%{"user" => %{"age" => 25, "name" => "bob"}})).user.name
+#    ∟ single(%{"user" => %{"age" => 30, "name" => "alice"}}).user
+#      ∟ single(%{"age" => 30, "name" => "alice"}).name
+#        ∟ ▶ single("alice")
+#    ∟ single(%{"user" => %{"age" => 25, "name" => "bob"}}).user
+#      ∟ single(%{"age" => 25, "name" => "bob"}).name
+#        ∟ ▶ single("bob")
+#  ⏹ many(single("alice"), single("bob"))
+```
+
+Each line shows how the focus moves deeper into the data structure as the path is applied, with markers indicating events during lens traversal:
+
+- `⏺` indicates the starting point of the lens focus
+- `▶` indicates a successful match or tranformation at that step
+- `⏹` indicates the end of the trace with the final result
+- `!` indicates an abrupt end of the trace, such as an exception
+
+The `single` and `many` markers indicate whether the focus is on a single value or multiple values at that point in the path.
+
 ## Features
 
 - **Path-based or programmatic construction**: Lenses can be constructed either from string paths or programmatically. Paths can include slices, wildcards, filters, prisms, and isomorphisms. In most cases, the path syntax is more concise and easier to read but programmatic construction is available for dynamic scenarios and for when you need filters that cannot be expressed in the path syntax.
@@ -164,7 +194,7 @@ Add `enzyme` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:enzyme, "~> 0.3.0"}
+    {:enzyme, "~> 0.3.1"}
   ]
 end
 ```

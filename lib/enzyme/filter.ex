@@ -179,3 +179,7 @@ defimpl Enzyme.Protocol, for: Enzyme.Filter do
   @spec transform(Filter.t(), Types.wrapped(), (any() -> any())) :: any()
   def transform(lens, collection, fun), do: Filter.transform(lens, collection, fun)
 end
+
+defimpl String.Chars, for: Enzyme.Filter do
+  def to_string(%Enzyme.Filter{} = filter), do: "[?#{String.Chars.to_string(filter.expression)}]"
+end

@@ -9,3 +9,9 @@ defmodule Enzyme.Single do
           value: any()
         }
 end
+
+defimpl String.Chars, for: Enzyme.Single do
+  def to_string(%Enzyme.Single{value: value}) do
+    "single(" <> inspect(value, limit: :infinity, pretty: true) <> ")"
+  end
+end

@@ -9,3 +9,9 @@ defmodule Enzyme.Many do
           values: list(any())
         }
 end
+
+defimpl String.Chars, for: Enzyme.Many do
+  def to_string(%Enzyme.Many{values: values}) do
+    "many(" <> Enum.map_join(values, ", ", &String.Chars.to_string/1) <> ")"
+  end
+end

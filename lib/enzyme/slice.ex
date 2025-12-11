@@ -218,3 +218,9 @@ defimpl Enzyme.Protocol, for: Enzyme.Slice do
           Types.wrapped()
   def transform(lens, collection, fun), do: Slice.transform(lens, collection, fun)
 end
+
+defimpl String.Chars, for: Enzyme.Slice do
+  def to_string(%Enzyme.Slice{indices: indices}) do
+    "[" <> Enum.map_join(indices, ", ", &inspect/1) <> "]"
+  end
+end

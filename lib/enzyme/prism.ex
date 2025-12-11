@@ -418,6 +418,67 @@ defmodule Enzyme.Prism do
 end
 
 defimpl Enzyme.Protocol, for: Enzyme.Prism do
-  def select(prism, collection), do: Enzyme.Prism.select(prism, collection)
-  def transform(prism, collection, fun), do: Enzyme.Prism.transform(prism, collection, fun)
+  alias Enzyme.Types
+  alias Enzyme.Prism
+
+  @spec select(Prism.t(), Types.wrapped()) :: any()
+  def select(prism, collection), do: Prism.select(prism, collection)
+
+  @spec transform(Prism.t(), Types.wrapped(), (any() -> any())) :: any()
+  def transform(prism, collection, fun), do: Prism.transform(prism, collection, fun)
+end
+
+defimpl String.Chars, for: Enzyme.Prism do
+  alias Enzyme.Prism
+
+  def to_string(%Prism{} = prism) do
+    [format_pattern(prism), format_projection(prism), " "] |> IO.iodata_to_binary()
+  end
+
+  defp format_pattern(%Prism{tag: tag, pattern: pattern, rest: rest}) do
+    cond do
+      rest ->
+        ["{", inspect(tag), ", ...}"]
+
+      is_list(pattern) ->
+        ["{", Enum.map_join([tag | pattern], ", ", &format_name/1), "}"]
+    end
+  end
+
+  defp format_projection(%Prism{} = prism) do
+    case {prism.output_tag, prism.output_pattern} do
+      {nil, nil} ->
+        ""
+
+      {out_tag, nil} ->
+        ["-> ", inspect(out_tag)]
+
+      {out_tag, out_pattern} ->
+        out_pattern_str =
+          case out_pattern do
+            :rest ->
+              "..."
+
+            names when is_list(names) ->
+              format_bindings(names)
+          end
+
+        [
+          "-> :",
+          "{",
+          inspect(out_tag),
+          if(out_pattern_str != nil, do: [", ", out_pattern_str], else: ""),
+          "}"
+        ]
+    end
+  end
+
+  defp format_name(nil), do: "_"
+  defp format_name(name), do: inspect(name)
+
+  defp format_bindings([]), do: ""
+
+  defp format_bindings(names) when is_list(names) do
+    Enum.map_join(names, ", ", fn name -> inspect(name) end)
+  end
 end
