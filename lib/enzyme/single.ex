@@ -21,6 +21,6 @@ defimpl Inspect, for: Enzyme.Single do
 
   def inspect(%Enzyme.Single{value: value}, opts) do
     doc = to_doc(value, opts)
-    {concat(["single(", doc, ")"]), opts}
+    concat(["single(", doc, ")"])
   end
 end

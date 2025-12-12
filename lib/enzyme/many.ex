@@ -21,6 +21,6 @@ defimpl Inspect, for: Enzyme.Many do
 
   def inspect(%Enzyme.Many{values: values}, opts) do
     doc = to_doc(values, opts)
-    {concat(["many(", doc, ")"]), opts}
+    concat(["many(", doc, ")"])
   end
 end

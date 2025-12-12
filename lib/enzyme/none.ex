@@ -15,7 +15,7 @@ end
 defimpl Inspect, for: Enzyme.None do
   import Inspect.Algebra
 
-  def inspect(%Enzyme.None{}, opts) do
-    {concat(["none()"]), opts}
+  def inspect(%Enzyme.None{}, _opts) do
+    concat(["none()"])
   end
 end
