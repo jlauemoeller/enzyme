@@ -20,7 +20,7 @@ defimpl Inspect, for: Enzyme.Single do
   import Inspect.Algebra
 
   def inspect(%Enzyme.Single{value: value}, opts) do
-    {doc, opts} = to_doc_with_opts(value, opts)
+    doc = to_doc(value, opts)
     {concat(["single(", doc, ")"]), opts}
   end
 end

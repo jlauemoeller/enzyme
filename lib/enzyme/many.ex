@@ -20,7 +20,7 @@ defimpl Inspect, for: Enzyme.Many do
   import Inspect.Algebra
 
   def inspect(%Enzyme.Many{values: values}, opts) do
-    {doc, opts} = to_doc_with_opts(values, opts)
+    doc = to_doc(values, opts)
     {concat(["many(", doc, ")"]), opts}
   end
 end
