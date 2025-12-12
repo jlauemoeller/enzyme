@@ -23,6 +23,8 @@ defmodule Enzyme.Filter do
           expression: Expression.t() | nil
         }
 
+  @default_tracer {false, 0, :stdio}
+
   @doc """
   Selects elements based on a predicate function.
 
@@ -73,27 +75,32 @@ defmodule Enzyme.Filter do
   """
 
   @spec select(Filter.t(), Types.wrapped()) :: Types.wrapped()
+  @spec select(Filter.t(), Types.wrapped(), Types.tracer()) :: Types.wrapped()
 
-  def select(%Filter{}, %None{} = none) do
+  def select(lens, data, tracer \\ @default_tracer)
+
+  def select(%Filter{}, %None{} = none, _tracer) do
     none
   end
 
-  def select(%Filter{predicate: pred}, %Single{value: list}) when is_list(list) do
-    many(Enum.filter(list, pred) |> Enum.map(&single/1))
+  def select(%Filter{predicate: pred}, %Single{value: list}, _tracer)
+      when is_list(list) do
+    many(Enum.map(Enum.filter(list, pred), &single/1))
   end
 
-  def select(%Filter{predicate: pred}, %Single{value: tuple}) when is_tuple(tuple) do
-    many(Enum.filter(Tuple.to_list(tuple), pred) |> Enum.map(&single/1))
+  def select(%Filter{predicate: pred}, %Single{value: tuple}, _tracer)
+      when is_tuple(tuple) do
+    many(Enum.map(Enum.filter(Tuple.to_list(tuple), pred), &single/1))
   end
 
-  def select(%Filter{predicate: pred}, %Single{value: value}) do
+  def select(%Filter{predicate: pred}, %Single{value: value}, _tracer) do
     if pred.(value), do: single(value), else: none()
   end
 
-  def select(%Filter{} = lens, %Many{values: list}) when is_list(list) do
+  def select(%Filter{} = filter, %Many{values: list}, tracer) when is_list(list) do
     selection =
       Enum.reduce(list, [], fn item, acc ->
-        case select(lens, item) do
+        case select(filter, item, tracer) do
           %None{} -> acc
           selected -> [selected | acc]
         end
@@ -102,7 +109,7 @@ defmodule Enzyme.Filter do
     many(Enum.reverse(selection))
   end
 
-  def select(%Filter{}, invalid) do
+  def select(%Filter{}, invalid, _tracer) do
     raise ArgumentError,
           "#{__MODULE__}.select/2 expected a wrapped value, got: #{inspect(invalid)}"
   end
@@ -147,23 +154,27 @@ defmodule Enzyme.Filter do
   """
 
   @spec transform(Filter.t(), Types.wrapped(), (any() -> any())) :: Types.wrapped()
+  @spec transform(Filter.t(), Types.wrapped(), (any() -> any()), Types.tracer()) ::
+          Types.wrapped()
 
-  def transform(%Filter{predicate: pred}, %Enzyme.Single{value: value} = wrapped, fun)
+  def transform(lens, data, fun, tracer \\ @default_tracer)
+
+  def transform(%Filter{predicate: pred}, %Enzyme.Single{value: value} = wrapped, fun, _tracer)
       when is_transform(fun) do
     if pred.(value), do: single(fun.(value)), else: wrapped
   end
 
-  def transform(%Filter{} = filter, %Enzyme.Many{values: list}, fun)
+  def transform(%Filter{} = filter, %Enzyme.Many{values: list}, fun, tracer)
       when is_list(list) and is_transform(fun) do
-    many(Enum.map(list, fn item -> transform(filter, item, fun) end))
+    many(Enum.map(list, fn item -> transform(filter, item, fun, tracer) end))
   end
 
-  def transform(%Filter{}, invalid, fun) when is_transform(fun) do
+  def transform(%Filter{}, invalid, fun, _tracer) when is_transform(fun) do
     raise ArgumentError,
           "#{__MODULE__}.transform/3 expected a wrapped value, got: #{inspect(invalid)}"
   end
 
-  def transform(%Filter{}, _invalid, fun) do
+  def transform(%Filter{}, _invalid, fun, _tracer) do
     raise ArgumentError,
           "#{__MODULE__}.transform/3 expected a function of arity 1, got: #{inspect(fun)}"
   end
@@ -174,10 +185,16 @@ defimpl Enzyme.Protocol, for: Enzyme.Filter do
   alias Enzyme.Filter
 
   @spec select(Filter.t(), Types.wrapped()) :: any()
+  @spec select(Filter.t(), Types.wrapped(), Types.tracer()) :: any()
   def select(lens, collection), do: Filter.select(lens, collection)
+  def select(lens, collection, tracer), do: Filter.select(lens, collection, tracer)
 
   @spec transform(Filter.t(), Types.wrapped(), (any() -> any())) :: any()
+  @spec transform(Filter.t(), Types.wrapped(), (any() -> any()), Types.tracer()) :: any()
   def transform(lens, collection, fun), do: Filter.transform(lens, collection, fun)
+
+  def transform(lens, collection, fun, tracer),
+    do: Filter.transform(lens, collection, fun, tracer)
 end
 
 defimpl String.Chars, for: Enzyme.Filter do

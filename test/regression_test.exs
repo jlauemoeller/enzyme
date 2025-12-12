@@ -119,7 +119,8 @@ defmodule Enzyme.RegressionTest do
     end
 
     test "transforming through multiple [*][*][*] levels", %{data: data} do
-      updated = Enzyme.transform(data, "departments[*][*][*].title", &String.upcase/1)
+      updated =
+        Enzyme.transform(data, "departments[*][*][*].title", &String.upcase/1)
 
       expected = %{
         "company" => "Acme Corp",
@@ -153,6 +154,92 @@ defmodule Enzyme.RegressionTest do
                  ":{:point3d, x, y, z} -> :{:point2d, x, z}",
                  fn {x, z} -> {x + 1, z + 1} end
                )
+    end
+  end
+
+  describe "t" do
+    setup do
+      data = %{
+        title: "Lorem Ipsum",
+        data: %{
+          "47QKL" => %{
+            "ABC" => [
+              %{
+                title: "1.4",
+                data: %{
+                  year_id: 142,
+                  value: true
+                }
+              }
+            ],
+            "DEF" => [
+              %{
+                title: "1.4.1",
+                data: nil
+              }
+            ]
+          }
+        }
+      }
+
+      [data: data]
+    end
+
+    test "t1" do
+      data = %{year_id: 123, value: true}
+
+      assert Enzyme.transform(data, ":year_id", 142) == %{
+               year_id: 142,
+               value: true
+             }
+    end
+
+    test "t2", %{data: data} do
+      assert Enzyme.transform(data, ":data", 123) == %{
+               title: "Lorem Ipsum",
+               data: 123
+             }
+    end
+
+    test "t3", %{data: data} do
+      assert Enzyme.transform(data, ":data[*][*][*][*]:year_id", 123) == %{
+               title: "Lorem Ipsum",
+               data: %{
+                 "47QKL" => %{
+                   "ABC" => [
+                     %{
+                       title: "1.4",
+                       data: %{
+                         year_id: 123,
+                         value: true
+                       }
+                     }
+                   ],
+                   "DEF" => [
+                     %{
+                       title: "1.4.1",
+                       data: nil
+                     }
+                   ]
+                 }
+               }
+             }
+    end
+  end
+
+  describe "tracing" do
+    setup do
+      data = [
+        %{"user" => %{"name" => "alice", "age" => 30}},
+        %{"user" => %{"name" => "bob", "age" => 25}}
+      ]
+
+      [data: data]
+    end
+
+    test "tracing through sequence of lenses", %{data: data} do
+      assert Enzyme.select(data, "[*].user.name") ==
+               ["alice", "bob"]
     end
   end
 end

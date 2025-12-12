@@ -11,3 +11,11 @@ end
 defimpl String.Chars, for: Enzyme.None do
   def to_string(%Enzyme.None{}), do: "none"
 end
+
+defimpl Inspect, for: Enzyme.None do
+  import Inspect.Algebra
+
+  def inspect(%Enzyme.None{}, opts) do
+    {concat(["none()"]), opts}
+  end
+end

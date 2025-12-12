@@ -7,6 +7,7 @@ defmodule Enzyme.Slice do
   defstruct [:indices]
 
   import Enzyme.Guards
+  import Enzyme.Tracing
   import Enzyme.Wraps
 
   alias Enzyme.Many
@@ -18,6 +19,8 @@ defmodule Enzyme.Slice do
   @type t :: %Slice{
           indices: list(integer() | binary() | atom())
         }
+
+  @default_tracer {false, 0, :stdio}
 
   @doc """
   Selects multiple elements from a collection based on the list of indices or
@@ -43,27 +46,32 @@ defmodule Enzyme.Slice do
   """
 
   @spec select(Slice.t(), Types.wrapped()) :: Types.wrapped()
+  @spec select(Slice.t(), Types.wrapped(), Types.tracer()) :: Types.wrapped()
 
-  def select(%Slice{}, %None{} = none) do
+  def select(lens, data, tracer \\ @default_tracer)
+
+  def select(%Slice{}, %None{} = none, _tracer) do
     none
   end
 
-  def select(%Slice{indices: indices}, %Single{value: list})
+  def select(%Slice{indices: indices}, %Single{value: list}, tracer)
       when is_list(list) and is_list(indices) do
-    many(pick_from_list(list, indices))
+    many(pick_from_list(list, indices, tracer))
   end
 
-  def select(%Slice{indices: indices}, %Single{value: tuple})
+  def select(%Slice{indices: indices}, %Single{value: tuple}, tracer)
       when is_tuple(tuple) and is_list(indices) do
-    many(pick_from_list(Tuple.to_list(tuple), indices))
+    many(pick_from_list(Tuple.to_list(tuple), indices, tracer))
   end
 
-  def select(%Slice{indices: indices}, %Single{value: map})
+  def select(%Slice{indices: indices}, %Single{value: map}, tracer)
       when is_map(map) and is_list(indices) do
     result =
       Enum.reduce(indices, [], fn index, acc ->
         if Map.has_key?(map, index) do
-          [single(Map.get(map, index)) | acc]
+          selected = single(Map.get(map, index))
+          trace(:pick, selected, tracer)
+          [selected | acc]
         else
           acc
         end
@@ -72,28 +80,35 @@ defmodule Enzyme.Slice do
     many(Enum.reverse(result))
   end
 
-  def select(%Slice{} = lens, %Many{values: list}) when is_list(list) do
+  def select(%Slice{} = slice, %Many{values: list}, tracer) when is_list(list) do
     selection =
       Enum.reduce(list, [], fn item, acc ->
-        case select(lens, item) do
-          %None{} -> acc
-          selected -> [selected | acc]
+        case select(slice, item, tracer) do
+          %None{} ->
+            acc
+
+          selected ->
+            trace(:pick, selected, tracer)
+            [selected | acc]
         end
       end)
 
     many(Enum.reverse(selection))
   end
 
-  def select(%Slice{}, invalid) do
+  def select(%Slice{}, invalid, _tracer) do
     raise ArgumentError,
           "#{__MODULE__}.select/2 expected a wrapped value, got: #{inspect(invalid)}"
   end
 
-  defp pick_from_list(list, indices) do
+  defp pick_from_list(list, indices, tracer) do
     {result, _} =
       Enum.reduce(list, {[], 0}, fn element, {acc, i} ->
         if i in indices do
-          {[single(element) | acc], i + 1}
+          selected = single(element)
+          trace(:pick, selected, tracer)
+
+          {[selected | acc], i + 1}
         else
           {acc, i + 1}
         end
@@ -153,40 +168,39 @@ defmodule Enzyme.Slice do
   """
 
   @spec transform(Slice.t(), Types.wrapped(), (any() -> any())) :: Types.wrapped()
+  @spec transform(Slice.t(), Types.wrapped(), (any() -> any()), Types.tracer()) :: Types.wrapped()
 
-  def transform(%Slice{}, %None{} = none, _fun) do
+  def transform(lens, data, fun, tracer \\ @default_tracer)
+
+  def transform(%Slice{}, %None{} = none, _fun, _tracer) do
     none
   end
 
-  def transform(%Slice{indices: indices}, %Single{value: list}, fun)
+  def transform(%Slice{indices: indices}, %Single{value: list}, fun, _tracer)
       when is_list(list) and is_transform(fun) do
     single(transform_list(list, indices, fun))
   end
 
-  def transform(%Slice{indices: indices}, %Single{value: tuple}, fun)
+  def transform(%Slice{indices: indices}, %Single{value: tuple}, fun, _tracer)
       when is_tuple(tuple) and is_transform(fun) do
-    tuple
-    |> Tuple.to_list()
-    |> transform_list(indices, fun)
-    |> List.to_tuple()
-    |> single()
+    single(List.to_tuple(transform_list(Tuple.to_list(tuple), indices, fun)))
   end
 
-  def transform(%Slice{indices: keys}, %Single{value: map}, fun)
+  def transform(%Slice{indices: keys}, %Single{value: map}, fun, _tracer)
       when is_map(map) and is_transform(fun) do
     single(Map.new(map, fn {k, v} -> {k, if(k in keys, do: fun.(v), else: v)} end))
   end
 
-  def transform(%Slice{} = lens, %Many{values: list}, fun) when is_transform(fun) do
-    many(Enum.map(list, fn item -> transform(lens, item, fun) end))
+  def transform(%Slice{} = slice, %Many{values: list}, fun, tracer) when is_transform(fun) do
+    many(Enum.map(list, fn item -> transform(slice, item, fun, tracer) end))
   end
 
-  def transform(%Slice{}, invalid, fun) when is_transform(fun) do
+  def transform(%Slice{}, invalid, fun, _tracer) when is_transform(fun) do
     raise ArgumentError,
           "#{__MODULE__}.transform/3 expected a wrapped value, got: #{inspect(invalid)}"
   end
 
-  def transform(%Slice{}, wrapped, fun)
+  def transform(%Slice{}, wrapped, fun, _tracer)
       when is_wrapped(wrapped) and not is_transform(fun) do
     raise ArgumentError,
           "#{__MODULE__}.transform/3 expected a transformation function of arity 1, got: #{inspect(fun)}"
@@ -211,12 +225,15 @@ defimpl Enzyme.Protocol, for: Enzyme.Slice do
   alias Enzyme.Types
   alias Enzyme.Slice
 
-  @spec select(Slice.t(), Types.collection() | Types.wrapped()) :: Types.wrapped()
+  @spec select(Slice.t(), Types.wrapped()) :: Types.wrapped()
+  @spec select(Slice.t(), Types.wrapped(), Types.tracer()) :: Types.wrapped()
   def select(lens, collection), do: Slice.select(lens, collection)
+  def select(lens, collection, tracer), do: Slice.select(lens, collection, tracer)
 
-  @spec transform(Slice.t(), Types.collection() | Types.wrapped(), (any() -> any())) ::
-          Types.wrapped()
+  @spec transform(Slice.t(), Types.wrapped(), (any() -> any())) :: Types.wrapped()
+  @spec transform(Slice.t(), Types.wrapped(), (any() -> any()), Types.tracer()) :: Types.wrapped()
   def transform(lens, collection, fun), do: Slice.transform(lens, collection, fun)
+  def transform(lens, collection, fun, tracer), do: Slice.transform(lens, collection, fun, tracer)
 end
 
 defimpl String.Chars, for: Enzyme.Slice do

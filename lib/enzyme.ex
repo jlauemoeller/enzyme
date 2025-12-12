@@ -9,8 +9,11 @@ defmodule Enzyme do
   alias Enzyme.Protocol
   alias Enzyme.Sequence
   alias Enzyme.Slice
+  alias Enzyme.Tracer
+  alias Enzyme.Types
 
   import Enzyme.Guards
+  import Enzyme.Tracing
   import Enzyme.Wraps
 
   @type lens :: All.t() | Filter.t() | Iso.t() | One.t() | Prism.t() | Sequence.t() | Slice.t()
@@ -21,6 +24,42 @@ defmodule Enzyme do
   Enzyme lets you precisely locate and transform data deep within Elixir data structures using an intuitive path syntax. Rather than manually traversing nested maps and lists, you can extract or modify specific values with indexing, slicing, wildcards, filters, and prisms. The library even converts data between different representations automatically making it ideal for processing JSON APIs and configuration files. Enzyme implements functional lenses under the hood, but no lens theory knowledge is required to use it effectively.
 
   See the [README](README.md) for more information and examples.
+
+  ## Tracing
+  Enzyme supports tracing of selection and transformation steps.
+  Use the `__trace__` in calls to `select` or `transform` to enable tracing
+  output. If set to `true` tracing is output to `stdio` but you can also provide
+  device id (eg. for a `StringIO` instance) to redirect or collect output . For
+  each step in the sequence, tracing shows the current value being processed,
+  the lens being applied, and the result after applying that lens. Indentation
+  is used to represent the depth of the sequence.
+
+  ```elixir
+  data = [
+    %{"user" => %{"name" => "alice", "age" => 30}},
+    %{"user" => %{"name" => "bob", "age" => 25}}
+  ]
+
+  Enzyme.select(data, "[*].user.name", __trace__: true)
+  ⏺ single([
+  ┆     %{"user" => %{"age" => 30, "name" => "alice"}},
+  ┆     %{"user" => %{"age" => 25, "name" => "bob"}}
+  ┆   ])[*]
+  ┆   └ ▶ many([
+  ┆   ┆     single(%{"user" => %{"age" => 30, "name" => "alice"}}),
+  ┆   ┆     single(%{"user" => %{"age" => 25, "name" => "bob"}})
+  ┆   ┆   ]).user
+  ┆   ┆   └ ◆ single(%{"age" => 30, "name" => "alice"})
+  ┆   ┆   └ ◆ single(%{"age" => 25, "name" => "bob"})
+  ┆   ┆   └ ▶ many([
+  ┆   ┆   ┆     single(%{"age" => 30, "name" => "alice"}),
+  ┆   ┆   ┆     single(%{"age" => 25, "name" => "bob"})
+  ┆   ┆   ┆   ]).name
+  ┆   ┆   ┆   └ ◆ single("alice")
+  ┆   ┆   ┆   └ ◆ single("bob")
+  ┆   ┆   └ ◀ many([single("alice"), single("bob")])
+  ⏹ many([single("alice"), single("bob")])
+  ```
   """
 
   @doc """
@@ -331,11 +370,16 @@ defmodule Enzyme do
 
   @spec select(any(), lens(), Keyword.t()) :: any()
   def select(collection, lens, opts) when is_collection(collection) and is_lens(lens) do
-    lens
-    |> resolve_isos(opts)
-    |> configure_tracer(opts)
-    |> Protocol.select(single(collection))
-    |> unwrap()
+    tracer = build_tracer(opts)
+    wrapped = single(collection)
+
+    result =
+      lens
+      |> resolve_isos(opts)
+      |> configure_tracing(tracer)
+      |> Protocol.select(wrapped, tracer)
+
+    trace(:end, lens, result, tracer) |> unwrap()
   end
 
   @doc """
@@ -384,26 +428,31 @@ defmodule Enzyme do
 
   def transform(collection, path_or_lens, fun_or_value, opts \\ [])
 
-  @spec transform(any(), String.t(), (any() -> any()) | any(), Keyword.t()) :: any()
+  @spec transform(Types.collection(), String.t(), (any() -> any()) | any(), Keyword.t()) :: any()
   def transform(collection, path, fun, opts)
       when is_collection(collection) and is_binary(path) and is_transform(fun) and is_list(opts) do
     transform(collection, new(path), fun, opts)
   end
 
-  @spec transform(any(), String.t(), any(), Keyword.t()) :: any()
+  @spec transform(Types.collection(), String.t(), any(), Keyword.t()) :: any()
   def transform(collection, path, value, opts)
       when is_collection(collection) and is_binary(path) and is_list(opts) do
     transform(collection, new(path), fn _ -> value end, opts)
   end
 
-  @spec transform(any(), lens(), (any() -> any()) | any(), Keyword.t()) :: any()
+  @spec transform(Types.collection(), lens(), (any() -> any()) | any(), Keyword.t()) :: any()
   def transform(collection, lens, fun, opts)
       when is_collection(collection) and is_lens(lens) and is_transform(fun) and is_list(opts) do
-    lens
-    |> resolve_isos(opts)
-    |> configure_tracer(opts)
-    |> Protocol.transform(single(collection), fun)
-    |> unwrap()
+    tracer = build_tracer(opts)
+    wrapped = single(collection)
+
+    result =
+      lens
+      |> resolve_isos(opts)
+      |> configure_tracing(tracer)
+      |> Protocol.transform(wrapped, fun, tracer)
+
+    trace(:end, lens, result, tracer) |> unwrap()
   end
 
   @spec transform(any(), lens(), any(), Keyword.t()) :: any()
@@ -458,12 +507,17 @@ defmodule Enzyme do
       "Available builtins: #{builtins}"
   end
 
-  defp configure_tracer(%Sequence{} = seq, opts) do
-    trace_opt = Keyword.get(opts, :__trace__, false)
-    %Sequence{seq | opts: Keyword.put(seq.opts, :__trace__, trace_opt)}
+  defp build_tracer(opts) do
+    tracer(Keyword.get(opts, :__trace__, false))
   end
 
-  defp configure_tracer(lens, _opts) do
-    lens
+  defp configure_tracing(%Sequence{} = seq, {true, _, _}) do
+    %Sequence{seq | lenses: Enum.map(seq.lenses, &Tracer.new/1)}
   end
+
+  defp configure_tracing(lens, {true, _, _}) do
+    Tracer.new(lens)
+  end
+
+  defp configure_tracing(lens, _tracer), do: lens
 end

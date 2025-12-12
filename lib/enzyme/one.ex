@@ -7,6 +7,7 @@ defmodule Enzyme.One do
   defstruct [:index]
 
   import Enzyme.Guards
+  import Enzyme.Tracing
   import Enzyme.Wraps
 
   alias Enzyme.Many
@@ -18,6 +19,8 @@ defmodule Enzyme.One do
   @type t :: %One{
           index: integer() | binary() | atom()
         }
+
+  @default_tracer {false, 0, :stdio}
 
   @doc """
   Selects a single element from a collection based on the index or key
@@ -38,20 +41,26 @@ defmodule Enzyme.One do
   """
 
   @spec select(One.t(), Types.wrapped()) :: Types.wrapped()
+  @spec select(One.t(), Types.wrapped(), Types.tracer()) :: Types.wrapped()
 
-  def select(%One{}, %None{} = none) do
+  def select(lens, data, tracer \\ @default_tracer)
+
+  def select(%One{}, %None{} = none, _tracer) do
     none
   end
 
-  def select(%One{index: index}, %Single{value: list})
+  def select(%One{index: index}, %Single{value: list}, _tracer)
       when is_integer(index) and is_list(list) do
     case Enum.at(list, index, none()) do
-      %None{} -> none()
-      value -> single(value)
+      %None{} ->
+        none()
+
+      value ->
+        single(value)
     end
   end
 
-  def select(%One{index: index}, %Single{value: list})
+  def select(%One{index: index}, %Single{value: list}, _tracer)
       when is_atom(index) and is_list(list) do
     case Keyword.get(list, index, none()) do
       %None{} -> none()
@@ -59,7 +68,7 @@ defmodule Enzyme.One do
     end
   end
 
-  def select(%One{index: index}, %Single{value: tuple})
+  def select(%One{index: index}, %Single{value: tuple}, _tracer)
       when is_integer(index) and is_tuple(tuple) do
     if index < tuple_size(tuple) and index >= 0 do
       single(elem(tuple, index))
@@ -68,7 +77,8 @@ defmodule Enzyme.One do
     end
   end
 
-  def select(%One{index: index}, %Single{value: map}) when is_map(map) do
+  def select(%One{index: index}, %Single{value: map}, _tracer)
+      when is_map(map) do
     if Map.has_key?(map, index) do
       single(Map.get(map, index))
     else
@@ -76,23 +86,27 @@ defmodule Enzyme.One do
     end
   end
 
-  def select(%One{}, %Single{}) do
+  def select(%One{}, %Single{}, _tracer) do
     none()
   end
 
-  def select(%One{} = lens, %Many{values: list}) when is_list(list) do
+  def select(%One{} = lens, %Many{values: list}, tracer) when is_list(list) do
     result =
       Enum.reduce(list, [], fn item, acc ->
-        case select(lens, item) do
-          %None{} -> acc
-          selected -> [selected | acc]
+        case select(lens, item, tracer) do
+          %None{} ->
+            acc
+
+          selected ->
+            trace(:pick, selected, tracer)
+            [selected | acc]
         end
       end)
 
     many(Enum.reverse(result))
   end
 
-  def select(%One{}, invalid) do
+  def select(%One{}, invalid, _tracer) do
     raise ArgumentError,
           "#{__MODULE__}.select/2 expected a wrapped value, got: #{inspect(invalid)}"
   end
@@ -155,33 +169,32 @@ defmodule Enzyme.One do
   """
 
   @spec transform(One.t(), Types.wrapped(), (any() -> any())) :: Types.wrapped()
+  @spec transform(One.t(), Types.wrapped(), (any() -> any()), Types.tracer()) :: Types.wrapped()
 
-  def transform(%One{}, %None{} = none, _fun) do
+  def transform(lens, data, fun, tracer \\ @default_tracer)
+
+  def transform(%One{}, %None{} = none, _fun, _tracer) do
     none
   end
 
-  def transform(%One{index: index}, %Single{value: tuple}, fun)
+  def transform(%One{index: index}, %Single{value: tuple}, fun, _tracer)
       when is_tuple(tuple) and is_integer(index) and index < tuple_size(tuple) and
              is_transform(fun) do
-    tuple
-    |> Tuple.to_list()
-    |> List.update_at(index, fun)
-    |> List.to_tuple()
-    |> single()
+    single(List.to_tuple(List.update_at(Tuple.to_list(tuple), index, fun)))
   end
 
-  def transform(%One{index: index}, %Single{value: tuple}, fun)
+  def transform(%One{index: index}, %Single{value: tuple}, fun, _tracer)
       when is_tuple(tuple) and is_integer(index) and index >= tuple_size(tuple) and
              is_transform(fun) do
     single(tuple)
   end
 
-  def transform(%One{index: index}, %Single{value: list}, fun)
+  def transform(%One{index: index}, %Single{value: list}, fun, _tracer)
       when is_list(list) and is_integer(index) and is_transform(fun) do
     single(List.update_at(list, index, fun))
   end
 
-  def transform(%One{index: index}, %Single{value: list}, fun)
+  def transform(%One{index: index}, %Single{value: list}, fun, _tracer)
       when is_list(list) and is_atom(index) and is_transform(fun) do
     if Keyword.has_key?(list, index) do
       single(Keyword.update!(list, index, fun))
@@ -190,7 +203,7 @@ defmodule Enzyme.One do
     end
   end
 
-  def transform(%One{index: key}, %Single{value: map}, fun)
+  def transform(%One{index: key}, %Single{value: map}, fun, _tracer)
       when is_map(map) and is_transform(fun) do
     if Map.has_key?(map, key) do
       single(Map.update!(map, key, fun))
@@ -199,21 +212,22 @@ defmodule Enzyme.One do
     end
   end
 
-  def transform(%One{}, %Single{} = value, fun) when is_transform(fun) do
+  def transform(%One{}, %Single{} = value, fun, _tracer) when is_transform(fun) do
     value
   end
 
-  def transform(%One{} = lens, %Many{values: list}, fun)
+  def transform(%One{} = lens, %Many{values: list}, fun, tracer)
       when is_list(list) and is_transform(fun) do
-    many(Enum.map(list, fn item -> transform(lens, item, fun) end))
+    many(Enum.map(list, fn item -> transform(lens, item, fun, tracer) end))
   end
 
-  def transform(%One{}, invalid, fun) when not is_wrapped(invalid) and is_transform(fun) do
+  def transform(%One{}, invalid, fun, _tracer)
+      when not is_wrapped(invalid) and is_transform(fun) do
     raise ArgumentError,
           "#{__MODULE__}.transform/3 expected a wrapped value, got: #{inspect(invalid)}"
   end
 
-  def transform(%One{}, _invalid, fun) when not is_transform(fun) do
+  def transform(%One{}, _invalid, fun, _tracer) when not is_transform(fun) do
     raise ArgumentError,
           "#{__MODULE__}.transform/3 expected a transformation function of arity 1, got: #{inspect(fun)}"
   end
@@ -224,10 +238,14 @@ defimpl Enzyme.Protocol, for: Enzyme.One do
   alias Enzyme.One
 
   @spec select(One.t(), Types.wrapped()) :: any()
+  @spec select(One.t(), Types.wrapped(), Types.tracer()) :: any()
   def select(lens, collection), do: One.select(lens, collection)
+  def select(lens, collection, tracer), do: One.select(lens, collection, tracer)
 
   @spec transform(One.t(), Types.wrapped(), (any() -> any())) :: any()
+  @spec transform(One.t(), Types.wrapped(), (any() -> any()), Types.tracer()) :: any()
   def transform(lens, collection, fun), do: One.transform(lens, collection, fun)
+  def transform(lens, collection, fun, tracer), do: One.transform(lens, collection, fun, tracer)
 end
 
 defimpl String.Chars, for: Enzyme.One do

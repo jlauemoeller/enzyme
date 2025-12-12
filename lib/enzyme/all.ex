@@ -34,33 +34,38 @@ defmodule Enzyme.All do
   ```
   """
 
-  @spec select(All.t(), Types.wrapped()) :: Types.wrapped()
+  @default_tracer {false, 0, :stdio}
 
-  def select(%All{}, %None{} = none) do
+  @spec select(All.t(), Types.wrapped()) :: Types.wrapped()
+  @spec select(All.t(), Types.wrapped(), Types.tracer()) :: Types.wrapped()
+
+  def select(lens, data, tracer \\ @default_tracer)
+
+  def select(%All{}, %None{} = none, _tracer) do
     none
   end
 
-  def select(%All{}, %Single{value: list}) when is_list(list) do
+  def select(%All{}, %Single{value: list}, _tracer) when is_list(list) do
     many(Enum.map(list, &single(&1)))
   end
 
-  def select(%All{}, %Single{value: tuple}) when is_tuple(tuple) do
+  def select(%All{}, %Single{value: tuple}, _tracer) when is_tuple(tuple) do
     many(Enum.map(Tuple.to_list(tuple), &single(&1)))
   end
 
-  def select(%All{}, %Single{value: map}) when is_map(map) do
+  def select(%All{}, %Single{value: map}, _tracer) when is_map(map) do
     many(Enum.map(Map.values(map), &single(&1)))
   end
 
-  def select(%All{}, %Single{}) do
+  def select(%All{}, %Single{}, _tracer) do
     none()
   end
 
-  def select(%All{}, %Many{values: list}) when is_list(list) do
-    many(Enum.map(list, fn item -> select(%All{}, item) end))
+  def select(%All{}, %Many{values: list}, tracer) when is_list(list) do
+    many(Enum.map(list, fn item -> select(%All{}, item, tracer) end))
   end
 
-  def select(%All{}, invalid) do
+  def select(%All{}, invalid, _tracer) do
     raise ArgumentError,
           "#{__MODULE__}.select/2 expected a wrapped value, got: #{inspect(invalid)}"
   end
@@ -89,40 +94,45 @@ defmodule Enzyme.All do
   """
 
   @spec transform(All.t(), Types.wrapped(), (any() -> any())) :: Types.wrapped()
+  @spec transform(All.t(), Types.wrapped(), (any() -> any()), Types.tracer()) :: Types.wrapped()
 
-  def transform(%All{}, %None{} = none, fun) when is_transform(fun) do
+  def transform(lens, data, fun, tracer \\ @default_tracer)
+
+  def transform(%All{}, %None{} = none, fun, _tracer) when is_transform(fun) do
     none
   end
 
-  def transform(%All{}, %Single{value: list}, fun)
+  def transform(%All{}, %Single{value: list}, fun, _tracer)
       when is_list(list) and is_transform(fun) do
     single(Enum.map(list, fn item -> fun.(item) end))
   end
 
-  def transform(%All{}, %Single{value: tuple}, fun)
+  def transform(%All{}, %Single{value: tuple}, fun, _tracer)
       when is_tuple(tuple) and is_transform(fun) do
     single(Enum.map(Tuple.to_list(tuple), fn item -> fun.(item) end))
   end
 
-  def transform(%All{}, %Single{value: map}, fun)
+  def transform(%All{}, %Single{value: map}, fun, _tracer)
       when is_map(map) and is_transform(fun) do
     single(Map.new(map, fn {k, v} -> {k, fun.(v)} end))
   end
 
-  def transform(%All{}, %Single{value: value}, fun) when is_transform(fun) do
+  def transform(%All{}, %Single{value: value}, fun, _tracer)
+      when is_transform(fun) do
     single(fun.(value))
   end
 
-  def transform(%All{}, %Many{values: list}, fun) when is_list(list) and is_transform(fun) do
-    many(Enum.map(list, fn item -> transform(%All{}, item, fun) end))
+  def transform(%All{}, %Many{values: list}, fun, tracer)
+      when is_list(list) and is_transform(fun) do
+    many(Enum.map(list, fn item -> transform(%All{}, item, fun, tracer) end))
   end
 
-  def transform(%All{}, invalid, fun) when is_transform(fun) do
+  def transform(%All{}, invalid, fun, _tracer) when is_transform(fun) do
     raise ArgumentError,
           "#{__MODULE__}.transform/3 expected a wrapped value, got: #{inspect(invalid)}"
   end
 
-  def transform(%All{}, _invalid, fun) do
+  def transform(%All{}, _invalid, fun, _tracer) do
     raise ArgumentError,
           "#{__MODULE__}.transform/3 expected a function of arity 1, got: #{inspect(fun)}"
   end
@@ -133,10 +143,14 @@ defimpl Enzyme.Protocol, for: Enzyme.All do
   alias Enzyme.All
 
   @spec select(All.t(), Types.wrapped()) :: any()
+  @spec select(All.t(), Types.wrapped(), Types.tracer()) :: any()
   def select(lens, collection), do: All.select(lens, collection)
+  def select(lens, collection, tracer), do: All.select(lens, collection, tracer)
 
   @spec transform(All.t(), Types.wrapped(), (any() -> any())) :: any()
+  @spec transform(All.t(), Types.wrapped(), (any() -> any()), Types.tracer()) :: any()
   def transform(lens, collection, fun), do: All.transform(lens, collection, fun)
+  def transform(lens, collection, fun, tracer), do: All.transform(lens, collection, fun, tracer)
 end
 
 defimpl String.Chars, for: Enzyme.All do

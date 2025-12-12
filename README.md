@@ -148,29 +148,42 @@ Filter expressions use `compare/2` for comparisons if defined for the data type,
 
 ## Tracing
 
-Enzyme supports tracing to help debug complex paths. Pass a `:__trace__` option to `Enzyme.select/3` or `Enzyme.transform/4` to see how the lens focus moves through the data structure:
+Enzyme supports tracing lens operations to help you understand how paths navigate data structures. Enable tracing by passing `__trace__: true` to `Enzyme.select/3` or `Enzyme.transform/4`. You can also pass a device ID (such as a `StringIO` instance) to redirect output. The trace displays each step in the path, showing the current focus, the lens operation applied, and the resulting values, with indentation representing traversal depth.
 
 ```elixir
 data = [
-  single(%{"user" => %{"name" => "alice", "age" => 30}}),
-  single(%{"user" => %{"name" => "bob", "age" => 25}})
+  %{"user" => %{"name" => "alice", "age" => 30}},
+  %{"user" => %{"name" => "bob", "age" => 25}}
 ]
 
-Enzyme.select("user.name", data, [__trace__: true])
-#  ⏺ many(single(%{"user" => %{"age" => 30, "name" => "alice"}}), single(%{"user" => %{"age" => 25, "name" => "bob"}})).user.name
-#    ∟ single(%{"user" => %{"age" => 30, "name" => "alice"}}).user
-#      ∟ single(%{"age" => 30, "name" => "alice"}).name
-#        ∟ ▶ single("alice")
-#    ∟ single(%{"user" => %{"age" => 25, "name" => "bob"}}).user
-#      ∟ single(%{"age" => 25, "name" => "bob"}).name
-#        ∟ ▶ single("bob")
-#  ⏹ many(single("alice"), single("bob"))
+Enzyme.select(data, "[*].user.name", __trace__: true)
+⏺ single([
+┆     %{"user" => %{"age" => 30, "name" => "alice"}},
+┆     %{"user" => %{"age" => 25, "name" => "bob"}}
+┆   ])[*]
+┆   └ ▶ many([
+┆   ┆     single(%{"user" => %{"age" => 30, "name" => "alice"}}),
+┆   ┆     single(%{"user" => %{"age" => 25, "name" => "bob"}})
+┆   ┆   ]).user
+┆   ┆   └ ◆ single(%{"age" => 30, "name" => "alice"})
+┆   ┆   └ ◆ single(%{"age" => 25, "name" => "bob"})
+┆   ┆   └ ▶ many([
+┆   ┆   ┆     single(%{"age" => 30, "name" => "alice"}),
+┆   ┆   ┆     single(%{"age" => 25, "name" => "bob"})
+┆   ┆   ┆   ]).name
+┆   ┆   ┆   └ ◆ single("alice")
+┆   ┆   ┆   └ ◆ single("bob")
+┆   ┆   └ ◀ many([single("alice"), single("bob")])
+⏹ many([single("alice"), single("bob")])
 ```
 
-Each line shows how the focus moves deeper into the data structure as the path is applied, with markers indicating events during lens traversal:
+Each line shows how the focus moves deeper into the data structure as lenses are
+applied, with markers indicating events:
 
 - `⏺` indicates the starting point of the lens focus
-- `▶` indicates a successful match or tranformation at that step
+- `▶` indicates a step forward in the matching process
+- `◀` data being returned from a lens step
+- `◆` indicates a successful match at that step
 - `⏹` indicates the end of the trace with the final result
 - `!` indicates an abrupt end of the trace, such as an exception
 
@@ -194,7 +207,7 @@ Add `enzyme` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:enzyme, "~> 0.3.1"}
+    {:enzyme, "~> 0.4.0"}
   ]
 end
 ```

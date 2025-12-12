@@ -4,4 +4,5 @@ defmodule Enzyme.Types do
   """
   @type wrapped :: Enzyme.None.t() | Enzyme.Single.t() | Enzyme.Many.t()
   @type collection :: list() | map() | tuple()
+  @type tracer :: {boolean(), number(), IO.device() | nil}
 end

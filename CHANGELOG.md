@@ -5,7 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-0.3.1 - 2025-12-10
+0.4.0 - 2025-12-11
+
+### Changed
+
+- Updated tracing output format for improved clarity and consistency.
+- Refactored tracing implementation to use a dedicated `Enzyme.Tracing` module for better organization and maintainability.
+- Enhanced tracing functionality to support custom indentation levels and output devices.
+  0.3.1 - 2025-12-10
 
 ### Added
 

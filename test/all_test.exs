@@ -82,10 +82,29 @@ defmodule Enzyme.AllTest do
       assert All.transform(lens, none(), &(&1 * 10)) == none()
     end
 
-    test "transforms a %Single{} value" do
+    test "transforms a %Single{} scalar value" do
       lens = %All{}
 
       assert All.transform(lens, single(10), &(&1 * 10)) == single(100)
+    end
+
+    test "transforms a %Single{} list value" do
+      lens = %All{}
+
+      assert All.transform(lens, single([1, 2, 3]), &(&1 * 10)) == single([10, 20, 30])
+    end
+
+    test "transforms a %Single{} tuple value" do
+      lens = %All{}
+
+      assert All.transform(lens, single({1, 2, 3}), &(&1 * 10)) == single([10, 20, 30])
+    end
+
+    test "transforms a %Single{} map value" do
+      lens = %All{}
+
+      assert All.transform(lens, single(%{a: 1, b: 2, c: 3}), &(&1 * 10)) ==
+               single(%{a: 10, b: 20, c: 30})
     end
 
     test "distributes over %Many{}" do

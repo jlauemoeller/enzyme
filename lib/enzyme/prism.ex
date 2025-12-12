@@ -72,6 +72,7 @@ defmodule Enzyme.Prism do
   defstruct [:tag, :pattern, :rest, :output_tag, :output_pattern]
 
   import Enzyme.Guards
+  import Enzyme.Tracing
   import Enzyme.Wraps
 
   alias Enzyme.Many
@@ -87,6 +88,8 @@ defmodule Enzyme.Prism do
           output_tag: atom() | nil,
           output_pattern: list() | :rest | nil
         }
+
+  @default_tracer {false, 0, :stdio}
 
   @doc """
   Creates a new prism for a tagged tuple.
@@ -128,13 +131,15 @@ defmodule Enzyme.Prism do
   """
 
   @spec select(Prism.t(), Types.wrapped()) :: Types.wrapped()
+  @spec select(Prism.t(), Types.wrapped(), Types.tracer()) :: Types.wrapped()
 
-  def select(%Prism{}, %None{} = none) do
+  def select(lens, data, tracer \\ @default_tracer)
+
+  def select(%Prism{}, %None{} = none, _tracer) do
     none
   end
 
-  def select(%Prism{} = prism, %Single{value: tuple})
-      when is_tuple(tuple)
+  def select(%Prism{} = prism, %Single{value: tuple}, _tracer)
       when is_tuple(tuple) and tuple_size(tuple) >= 1 do
     if elem(tuple, 0) == prism.tag &&
          (is_nil(prism.pattern) ||
@@ -145,24 +150,31 @@ defmodule Enzyme.Prism do
     end
   end
 
-  def select(%Prism{}, %Single{}) do
+  def select(%Prism{}, %Single{}, _tracer) do
     none()
   end
 
-  def select(%Prism{} = prism, %Many{values: list}) when is_list(list) do
+  def select(%Prism{} = prism, %Many{values: list}, tracer) when is_list(list) do
     selection =
       Enum.reduce(list, [], fn item, acc ->
-        case select(prism, item) do
-          %None{} -> acc
-          %Single{} = value -> [value | acc]
-          %Many{} = many -> [many | acc]
+        case select(prism, item, tracer) do
+          %None{} ->
+            acc
+
+          %Single{} = value ->
+            trace(:pick, value, tracer)
+            [value | acc]
+
+          %Many{} = many ->
+            trace(:pick, many, tracer)
+            [many | acc]
         end
       end)
 
     many(Enum.reverse(selection))
   end
 
-  def select(%Prism{}, invalid) do
+  def select(%Prism{}, invalid, _tracer) do
     raise ArgumentError,
           "#{__MODULE__}.select/2 expected a wrapped value, got: #{inspect(invalid)}"
   end
@@ -233,12 +245,15 @@ defmodule Enzyme.Prism do
   """
 
   @spec transform(Prism.t(), Types.wrapped(), (any() -> any())) :: Types.wrapped()
+  @spec transform(Prism.t(), Types.wrapped(), (any() -> any()), Types.tracer()) :: Types.wrapped()
 
-  def transform(%Prism{}, %None{} = none, _fun) do
+  def transform(prism, data, fun, tracer \\ @default_tracer)
+
+  def transform(%Prism{}, %None{} = none, _fun, _tracer) do
     none
   end
 
-  def transform(%Prism{tag: tag, rest: true} = prism, %Single{value: tuple}, fun)
+  def transform(%Prism{tag: tag, rest: true} = prism, %Single{value: tuple}, fun, _tracer)
       when is_tuple(tuple) and tuple_size(tuple) >= 1 and is_transform(fun) do
     if elem(tuple, 0) == tag do
       extracted = extract_rest(tuple)
@@ -250,7 +265,12 @@ defmodule Enzyme.Prism do
     end
   end
 
-  def transform(%Prism{tag: tag, pattern: pattern} = prism, %Single{value: tuple}, fun)
+  def transform(
+        %Prism{tag: tag, pattern: pattern} = prism,
+        %Single{value: tuple},
+        fun,
+        _tracer
+      )
       when is_tuple(tuple) and tuple_size(tuple) >= 1 and is_transform(fun) do
     if elem(tuple, 0) == tag and tuple_size(tuple) == length(pattern) + 1 do
       extracted = extract_pattern(tuple, pattern)
@@ -268,16 +288,16 @@ defmodule Enzyme.Prism do
     end
   end
 
-  def transform(%Prism{}, %Single{} = single, _fun) do
+  def transform(%Prism{}, %Single{} = single, _fun, _tracer) do
     single
   end
 
-  def transform(%Prism{} = prism, %Many{values: list}, fun)
+  def transform(%Prism{} = prism, %Many{values: list}, fun, tracer)
       when is_list(list) and is_transform(fun) do
-    many(Enum.map(list, fn item -> transform(prism, item, fun) end))
+    many(Enum.map(list, fn item -> transform(prism, item, fun, tracer) end))
   end
 
-  def transform(%Prism{}, value, fun) do
+  def transform(%Prism{}, value, fun, _tracer) do
     raise ArgumentError,
           "#{__MODULE__}.transform/2 expected a wrapped value and a transform function of arity 1, got: #{inspect(value)} and #{inspect(fun)}"
   end
@@ -422,10 +442,16 @@ defimpl Enzyme.Protocol, for: Enzyme.Prism do
   alias Enzyme.Prism
 
   @spec select(Prism.t(), Types.wrapped()) :: any()
+  @spec select(Prism.t(), Types.wrapped(), Types.tracer()) :: any()
   def select(prism, collection), do: Prism.select(prism, collection)
+  def select(prism, collection, tracer), do: Prism.select(prism, collection, tracer)
 
   @spec transform(Prism.t(), Types.wrapped(), (any() -> any())) :: any()
+  @spec transform(Prism.t(), Types.wrapped(), (any() -> any()), Types.tracer()) :: any()
   def transform(prism, collection, fun), do: Prism.transform(prism, collection, fun)
+
+  def transform(prism, collection, fun, tracer),
+    do: Prism.transform(prism, collection, fun, tracer)
 end
 
 defimpl String.Chars, for: Enzyme.Prism do

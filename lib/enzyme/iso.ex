@@ -76,6 +76,8 @@ defmodule Enzyme.Iso do
           backward: (any() -> any())
         }
 
+  @default_tracer {false, 0, :stdio}
+
   @doc """
   Creates a new iso with bidirectional functions.
 
@@ -109,20 +111,23 @@ defmodule Enzyme.Iso do
   """
 
   @spec select(Iso.t(), Types.wrapped()) :: Types.wrapped()
+  @spec select(Iso.t(), Types.wrapped(), Types.tracer()) :: Types.wrapped()
 
-  def select(%Iso{}, %None{} = none) do
+  def select(lens, data, tracer \\ @default_tracer)
+
+  def select(%Iso{}, %None{} = none, _tracer) do
     none
   end
 
-  def select(%Iso{} = iso, %Single{value: value}) do
+  def select(%Iso{} = iso, %Single{value: value}, _tracer) do
     single(iso.forward.(value))
   end
 
-  def select(%Iso{} = iso, %Many{values: list}) when is_list(list) do
-    many(Enum.map(list, fn item -> select(iso, item) end))
+  def select(%Iso{} = iso, %Many{values: list}, tracer) when is_list(list) do
+    many(Enum.map(list, fn item -> select(iso, item, tracer) end))
   end
 
-  def select(%Iso{}, invalid) do
+  def select(%Iso{}, invalid, _tracer) do
     raise ArgumentError,
           "#{__MODULE__}.select/2 expected a wrapped value, got: #{inspect(invalid)}"
   end
@@ -141,26 +146,30 @@ defmodule Enzyme.Iso do
   """
 
   @spec transform(Iso.t(), Types.wrapped(), (any() -> any())) :: Types.wrapped()
+  @spec transform(Iso.t(), Types.wrapped(), (any() -> any()), Types.tracer()) :: Types.wrapped()
 
-  def transform(%Iso{}, %None{} = none, _fun) do
+  def transform(lens, data, fun, tracer \\ @default_tracer)
+
+  def transform(%Iso{}, %None{} = none, _fun, _tracer) do
     none
   end
 
-  def transform(%Iso{} = iso, %Enzyme.Single{value: value}, fun) when is_transform(fun) do
+  def transform(%Iso{} = iso, %Enzyme.Single{value: value}, fun, _tracer)
+      when is_transform(fun) do
     single(iso.backward.(fun.(iso.forward.(value))))
   end
 
-  def transform(%Iso{} = iso, %Enzyme.Many{values: list}, fun)
+  def transform(%Iso{} = iso, %Enzyme.Many{values: list}, fun, tracer)
       when is_list(list) and is_transform(fun) do
-    many(Enum.map(list, fn item -> transform(iso, item, fun) end))
+    many(Enum.map(list, fn item -> transform(iso, item, fun, tracer) end))
   end
 
-  def transform(%Iso{}, invalid, fun) when is_transform(fun) do
+  def transform(%Iso{}, invalid, fun, _tracer) when is_transform(fun) do
     raise ArgumentError,
           "#{__MODULE__}.transform/3 expected a wrapped value, got: #{inspect(invalid)}"
   end
 
-  def transform(%Iso{}, wrapped, fun)
+  def transform(%Iso{}, wrapped, fun, _tracer)
       when is_wrapped(wrapped) and not is_transform(fun) do
     raise ArgumentError,
           "#{__MODULE__}.transform/3 expected a transformation function of arity 1, got: #{inspect(fun)}"
@@ -172,10 +181,14 @@ defimpl Enzyme.Protocol, for: Enzyme.Iso do
   alias Enzyme.Iso
 
   @spec select(Iso.t(), Types.wrapped()) :: any()
+  @spec select(Iso.t(), Types.wrapped(), Types.tracer()) :: any()
   def select(lens, collection), do: Iso.select(lens, collection)
+  def select(lens, collection, tracer), do: Iso.select(lens, collection, tracer)
 
   @spec transform(Iso.t(), Types.wrapped(), (any() -> any())) :: any()
+  @spec transform(Iso.t(), Types.wrapped(), (any() -> any()), Types.tracer()) :: any()
   def transform(lens, collection, fun), do: Iso.transform(lens, collection, fun)
+  def transform(lens, collection, fun, tracer), do: Iso.transform(lens, collection, fun, tracer)
 end
 
 defimpl String.Chars, for: Enzyme.Iso do

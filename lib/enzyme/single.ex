@@ -12,6 +12,15 @@ end
 
 defimpl String.Chars, for: Enzyme.Single do
   def to_string(%Enzyme.Single{value: value}) do
-    "single(" <> inspect(value, limit: :infinity, pretty: true) <> ")"
+    "single(" <> String.Chars.to_string(value) <> ")"
+  end
+end
+
+defimpl Inspect, for: Enzyme.Single do
+  import Inspect.Algebra
+
+  def inspect(%Enzyme.Single{value: value}, opts) do
+    {doc, opts} = to_doc_with_opts(value, opts)
+    {concat(["single(", doc, ")"]), opts}
   end
 end

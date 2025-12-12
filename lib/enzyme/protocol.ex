@@ -12,6 +12,7 @@ defprotocol Enzyme.Protocol do
   Returns a wrapped value: `%Enzyme.Single{}` or `%Enzyme.Many{}`.
   """
   def select(lens, collection)
+  def select(lens, collection, tracer)
 
   @doc """
   Transforms elements in a collection based on the lens.
@@ -19,4 +20,5 @@ defprotocol Enzyme.Protocol do
   Returns a wrapped value: `%Enzyme.Single{}` or `%Enzyme.Many{}`.
   """
   def transform(lens, collection, fun)
+  def transform(lens, collection, fun, tracer)
 end
