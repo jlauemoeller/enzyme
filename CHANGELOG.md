@@ -9,9 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- BREAKING: The [*] selector (All lens) now flattens nested lists in its output. For example, selecting "matrix[\*][*].v" from a structure with a matrix of values will return a flat list of all "v" values instead of a list of lists. This change improves usability and consistency with common expectations for "all" selectors.
 - Updated tracing output format for improved clarity and consistency.
 - Refactored tracing implementation to use a dedicated `Enzyme.Tracing` module for better organization and maintainability.
 - Enhanced tracing functionality to support custom indentation levels and output devices.
+
   0.3.1 - 2025-12-10
 
 ### Added

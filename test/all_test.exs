@@ -49,14 +49,16 @@ defmodule Enzyme.AllTest do
                ])
              ) ==
                many([
-                 many([single(10), single(20)]),
-                 many([single(30), single(40)])
+                 single(10),
+                 single(20),
+                 single(30),
+                 single(40)
                ])
     end
 
-    test "Returns None when input is a %Single{} with a non-collection value" do
+    test "Returns input when input is a %Single{} with a non-collection value" do
       lens = %All{}
-      assert All.select(lens, single(1)) == none()
+      assert All.select(lens, single(1)) == single(1)
     end
 
     test "returns empty collection when input collection is empty" do

@@ -643,12 +643,12 @@ defmodule Enzyme.ReadmeTest do
 
     test "gets employee names from all departments", %{data: data} do
       result = Enzyme.select(data, "departments[*].employees[*].name")
-      assert result == [["Alice", "Bob"], ["Charlie"]]
+      assert result == ["Alice", "Bob", "Charlie"]
     end
 
     test "gets employees from Engineering only", %{data: data} do
       result = Enzyme.select(data, "departments[*][?name == 'Engineering'].employees[*].name")
-      assert result == [["Alice", "Bob"]]
+      assert result == ["Alice", "Bob"]
     end
 
     test "updates all titles", %{data: data} do

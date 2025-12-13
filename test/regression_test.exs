@@ -75,21 +75,24 @@ defmodule Enzyme.RegressionTest do
 
     test "selecting through multiple [*] levels", %{data: data} do
       assert Enzyme.select(data, "departments[*].employees[*].name") == [
-               ["Alice", "Bob"],
-               ["Charlie"]
+               "Alice",
+               "Bob",
+               "Charlie"
              ]
     end
 
     test "selecting through multiple [*][*][*] levels", %{data: data} do
       assert Enzyme.select(data, "departments[*][*][*].name") == [
-               [["Alice", "Bob"]],
-               [["Charlie"]]
+               "Alice",
+               "Bob",
+               "Charlie"
              ]
     end
 
     test "selecting through multiple [*] levels with filtering", %{data: data} do
       assert Enzyme.select(data, "departments[*][?name == 'Engineering'].employees[*].name") == [
-               ["Alice", "Bob"]
+               "Alice",
+               "Bob"
              ]
     end
 

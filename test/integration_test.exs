@@ -421,13 +421,17 @@ defmodule Enzyme.IntegrationTest do
       assert result == [:dark_mode]
     end
 
-    test "get all feature names across all environments", %{config: config} do
+    test "get all feature names per environment", %{config: config} do
       # Combines: atom wildcard, nested wildcard, atom key extraction
       result = Enzyme.select(config, ":environments[*].features[*]:name")
 
       assert result == [
-               [:dark_mode, :beta_api, :new_checkout],
-               [:dark_mode, :beta_api, :new_checkout]
+               :dark_mode,
+               :beta_api,
+               :new_checkout,
+               :dark_mode,
+               :beta_api,
+               :new_checkout
              ]
     end
 
@@ -756,7 +760,7 @@ defmodule Enzyme.IntegrationTest do
       ]
 
       result = Enzyme.select(data, "[*].items[*]:name")
-      assert result == [["Phone", "Laptop"], ["Tablet"]]
+      assert result == ["Phone", "Laptop", "Tablet"]
     end
 
     test "handles mixed presence of nested structures" do
@@ -769,7 +773,7 @@ defmodule Enzyme.IntegrationTest do
       }
 
       result = Enzyme.select(data, "records[*].metadata.tags[*]")
-      assert result == [["a", "b"], ["c"]]
+      assert result == ["a", "b", "c"]
     end
   end
 
@@ -845,7 +849,7 @@ defmodule Enzyme.IntegrationTest do
 
       result = Enzyme.select(data, "regions[*].districts[*].stores[*].id")
 
-      assert result == [[[1, 2], [3]], [[4, 5, 6]]]
+      assert result == [1, 2, 3, 4, 5, 6]
     end
 
     test "wildcards with intermediate filtering" do
@@ -884,7 +888,7 @@ defmodule Enzyme.IntegrationTest do
           "teams[*][?active == true].members[*][?role == 'dev'].name"
         )
 
-      assert result == [["Bob"], ["Dave", "Eve"]]
+      assert result == ["Bob", "Dave", "Eve"]
     end
 
     test "double wildcard [*][*] pattern" do
@@ -896,7 +900,7 @@ defmodule Enzyme.IntegrationTest do
       }
 
       result = Enzyme.select(data, "matrix[*][*].v")
-      assert result == [[1, 2], [3, 4, 5]]
+      assert result == [1, 2, 3, 4, 5]
     end
   end
 
@@ -999,7 +1003,7 @@ defmodule Enzyme.IntegrationTest do
       }
 
       result = Enzyme.select(data, "categories[*].products[*].sku")
-      assert result == [[], ["B1"], []]
+      assert result == ["B1"]
     end
   end
 
@@ -1027,7 +1031,7 @@ defmodule Enzyme.IntegrationTest do
 
       # Get all completed subtask durations
       result = Enzyme.select(data, "tasks[*].subtasks[*]:{:completed, info}:duration")
-      assert result == [[100, 200], [50]]
+      assert result == [100, 200, 50]
     end
 
     test "transform through nested prisms" do

@@ -124,24 +124,41 @@ defmodule EnzymeTest do
       assert Enzyme.select(@data, "offices[*].name") == ["HQ", "East", "Closed"]
     end
 
+    test "selects specific index from all elements" do
+      assert Enzyme.select(@data, "offices[*].address[2]") == ["CA", "NY", "IL"]
+    end
+
+    test "selects all from single element" do
+      assert Enzyme.select(@data, "offices[0].address") == [
+               "Main Street 1",
+               "Beverly Hills",
+               "CA",
+               "90210"
+             ]
+    end
+
     test "selects all nested elements" do
-      assert Enzyme.select(@data, "offices[*].address[*]") == [
+      assert Enzyme.select(@data, "offices[*].address") == [
                ["Main Street 1", "Beverly Hills", "CA", "90210"],
                ["2142 Madison Ave", "New York", "NY", "10037"],
                ["123 Old Road", "Chicago", "IL", "60601"]
              ]
     end
 
-    test "selects specific index from all elements" do
-      assert Enzyme.select(@data, "offices[*].address[2]") == ["CA", "NY", "IL"]
-    end
-
-    test "selects all from single element" do
-      assert Enzyme.select(@data, "offices[0].address[*]") == [
+    test "selects all from single element with trailing wildcard" do
+      assert Enzyme.select(@data, "offices[*].address[*]") == [
                "Main Street 1",
                "Beverly Hills",
                "CA",
-               "90210"
+               "90210",
+               "2142 Madison Ave",
+               "New York",
+               "NY",
+               "10037",
+               "123 Old Road",
+               "Chicago",
+               "IL",
+               "60601"
              ]
     end
   end
@@ -297,16 +314,6 @@ defmodule EnzymeTest do
       # Get names from first two offices that are active
       result = Enzyme.select(@data, "offices[0,1][?active == true].name")
       assert result == ["HQ", "East"]
-    end
-
-    test "deeply nested selection with multiple wildcards" do
-      result = Enzyme.select(@data, "offices[*].address[*]")
-
-      assert result == [
-               ["Main Street 1", "Beverly Hills", "CA", "90210"],
-               ["2142 Madison Ave", "New York", "NY", "10037"],
-               ["123 Old Road", "Chicago", "IL", "60601"]
-             ]
     end
 
     test "filter then select multiple keys" do

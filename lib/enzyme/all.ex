@@ -57,12 +57,26 @@ defmodule Enzyme.All do
     many(Enum.map(Map.values(map), &single(&1)))
   end
 
-  def select(%All{}, %Single{}, _tracer) do
-    none()
+  def select(%All{}, %Single{} = single, _tracer) do
+    single
   end
 
-  def select(%All{}, %Many{values: list}, tracer) when is_list(list) do
-    many(Enum.map(list, fn item -> select(%All{}, item, tracer) end))
+  def select(%All{} = lens, %Many{values: list}, tracer) when is_list(list) do
+    result =
+      Enum.reduce(list, [], fn item, acc ->
+        case select(lens, item, tracer) do
+          %None{} ->
+            acc
+
+          %Single{} ->
+            [item | acc]
+
+          %Many{} = many ->
+            Enum.reduce(many.values, acc, fn v, a -> [v | a] end)
+        end
+      end)
+
+    many(Enum.reverse(result))
   end
 
   def select(%All{}, invalid, _tracer) do

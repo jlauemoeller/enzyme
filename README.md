@@ -860,11 +860,11 @@ data = Jason.decode!(json)
 
 # Get all employee names across all departments
 Enzyme.select(data, "departments[*].employees[*].name")
-# => [["Alice", "Bob"], ["Charlie"]]
+# => ["Alice", "Bob", "Charlie"]
 
 # Get employees from Engineering only
 Enzyme.select(data, "departments[*][?name == 'Engineering'].employees[*].name")
-# => [["Alice", "Bob"]]
+# => ["Alice", "Bob"]
 
 # Update all titles
 Enzyme.transform(data, "departments[*].employees[*].title", &String.upcase/1)
