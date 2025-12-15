@@ -14,7 +14,7 @@ defmodule FilterIsoTest do
         ]
       }
 
-      result = Enzyme.select(data, "items[*][?count::integer == 42].name", [])
+      result = Enzyme.select(data, "items[*][?@.count::integer == 42].name", [])
       assert result == ["a", "c"]
     end
 
@@ -27,7 +27,7 @@ defmodule FilterIsoTest do
         ]
       }
 
-      result = Enzyme.select(data, "items[*][?price::float == 9.99].name", [])
+      result = Enzyme.select(data, "items[*][?@.price::float == 9.99].name", [])
       assert result == ["a", "c"]
     end
 
@@ -40,7 +40,7 @@ defmodule FilterIsoTest do
         ]
       }
 
-      result = Enzyme.select(data, "items[*][?count::integer != 10].name", [])
+      result = Enzyme.select(data, "items[*][?@.count::integer != 10].name", [])
       assert result == ["b"]
     end
 
@@ -53,7 +53,7 @@ defmodule FilterIsoTest do
         ]
       }
 
-      result = Enzyme.select(data, "items[*][?status::atom == :active].name", [])
+      result = Enzyme.select(data, "items[*][?@.status::atom == :active].name", [])
       assert result == ["a", "c"]
     end
   end
@@ -71,7 +71,7 @@ defmodule FilterIsoTest do
         ]
       }
 
-      result = Enzyme.select(data, "items[*][?code::base64::integer == 42].name", [])
+      result = Enzyme.select(data, "items[*][?@.code::base64::integer == 42].name", [])
       assert result == ["a", "c"]
     end
   end
@@ -89,13 +89,13 @@ defmodule FilterIsoTest do
       }
 
       # Filter items where price in dollars == 10.0 (1000 cents)
-      result = Enzyme.select(data, "items[*][?price::cents == 10.0].name", cents: cents_iso)
+      result = Enzyme.select(data, "items[*][?@.price::cents == 10.0].name", cents: cents_iso)
       assert result == ["exact"]
     end
 
     test "filter with custom iso resolved at parse time" do
       cents_iso = Iso.new(&(&1 / 100), &trunc(&1 * 100))
-      lens = Enzyme.new("items[*][?price::cents == 15.99].name", cents: cents_iso)
+      lens = Enzyme.new("items[*][?@.price::cents == 15.99].name", cents: cents_iso)
 
       data = %{
         "items" => [
@@ -131,7 +131,7 @@ defmodule FilterIsoTest do
       data = %{"items" => [%{"value" => 42}]}
 
       assert_raise ArgumentError, ~r/Iso 'unknown' is not resolved/, fn ->
-        Enzyme.select(data, "items[*][?value::unknown == 10]", [])
+        Enzyme.select(data, "items[*][?@.value::unknown == 10]", [])
       end
     end
 
@@ -139,7 +139,7 @@ defmodule FilterIsoTest do
       iso1 = Iso.new(&(&1 * 2), &div(&1, 2))
 
       # Iso provided at parse time - gets baked into the lens
-      lens = Enzyme.new("items[*][?value::custom == 60].name", custom: iso1)
+      lens = Enzyme.new("items[*][?@.value::custom == 60].name", custom: iso1)
 
       data = %{
         "items" => [
@@ -161,7 +161,7 @@ defmodule FilterIsoTest do
       iso = Iso.new(&(&1 * 10), &div(&1, 10))
 
       # No iso provided at parse time - creates IsoRef
-      lens = Enzyme.new("items[*][?value::custom == 60].name")
+      lens = Enzyme.new("items[*][?@.value::custom == 60].name")
 
       data = %{
         "items" => [
@@ -194,7 +194,7 @@ defmodule FilterIsoTest do
       result =
         Enzyme.transform(
           data,
-          "items[*][?count::integer == 15].name",
+          "items[*][?@.count::integer == 15].name",
           &String.duplicate(&1, 2),
           []
         )
@@ -213,14 +213,14 @@ defmodule FilterIsoTest do
     test "filter with no matches returns empty list" do
       data = %{"items" => [%{"value" => "1"}, %{"value" => "2"}]}
 
-      result = Enzyme.select(data, "items[*][?value::integer == 999].value", [])
+      result = Enzyme.select(data, "items[*][?@.value::integer == 999].value", [])
       assert result == []
     end
 
     test "filter with all matches" do
       data = %{"items" => [%{"value" => "42"}, %{"value" => "42"}]}
 
-      result = Enzyme.select(data, "items[*][?value::integer == 42].value", [])
+      result = Enzyme.select(data, "items[*][?@.value::integer == 42].value", [])
       assert result == ["42", "42"]
     end
 
@@ -236,7 +236,7 @@ defmodule FilterIsoTest do
 
       # Items where count == 10 AND status::atom == :active
       result =
-        Enzyme.select(data, "items[*][?count::integer == 10][?status::atom == :active]", [])
+        Enzyme.select(data, "items[*][?@.count::integer == 10][?@.status::atom == :active]", [])
 
       assert result == [%{"count" => "10", "status" => "active"}]
     end
@@ -250,7 +250,7 @@ defmodule FilterIsoTest do
       }
 
       # Using ~~ string equality with iso
-      result = Enzyme.select(data, "items[*][?code::integer ~~ '42'].name", [])
+      result = Enzyme.select(data, "items[*][?@.code::integer ~~ '42'].name", [])
       assert result == ["a"]
     end
   end
@@ -266,7 +266,7 @@ defmodule FilterIsoTest do
       }
 
       # Compare integer field to string literal converted to integer
-      result = Enzyme.select(data, "items[*][?value == '42'::integer].name", [])
+      result = Enzyme.select(data, "items[*][?@.value == '42'::integer].name", [])
       assert result == ["a", "c"]
     end
 
@@ -281,7 +281,7 @@ defmodule FilterIsoTest do
 
       # Integer literal converted to string via custom iso
       str_iso = Iso.new(&Integer.to_string/1, &String.to_integer/1)
-      result = Enzyme.select(data, "items[*][?count == 42::to_str].name", to_str: str_iso)
+      result = Enzyme.select(data, "items[*][?@.count == 42::to_str].name", to_str: str_iso)
       assert result == ["a", "c"]
     end
 
@@ -295,7 +295,7 @@ defmodule FilterIsoTest do
       }
 
       # Both sides converted to integers for comparison
-      result = Enzyme.select(data, "items[*][?left::integer == right::integer].name", [])
+      result = Enzyme.select(data, "items[*][?@.left::integer == @.right::integer].name", [])
       assert result == ["a"]
     end
 
@@ -313,7 +313,7 @@ defmodule FilterIsoTest do
 
       # Compare: field (base64→string) == literal (already string)
       # Both get decoded from base64 to plain string for comparison
-      result = Enzyme.select(data, "items[*][?code::base64 == '42'].name", [])
+      result = Enzyme.select(data, "items[*][?@.code::base64 == '42'].name", [])
       assert result == ["a", "c"]
     end
 
@@ -327,7 +327,7 @@ defmodule FilterIsoTest do
       }
 
       # Count > '10' converted to integer
-      result = Enzyme.select(data, "items[*][?count > '10'::integer].name", [])
+      result = Enzyme.select(data, "items[*][?@.count > '10'::integer].name", [])
       assert result == ["b", "c"]
     end
 
@@ -342,7 +342,7 @@ defmodule FilterIsoTest do
 
       # count >= '10'::integer AND active == true
       result =
-        Enzyme.select(data, "items[*][?count >= '10'::integer and active == true].name", [])
+        Enzyme.select(data, "items[*][?@.count >= '10'::integer and @.active == true].name", [])
 
       assert result == ["b"]
     end
@@ -359,7 +359,7 @@ defmodule FilterIsoTest do
       bool_to_str = Iso.new(&Atom.to_string/1, &String.to_atom/1)
 
       result =
-        Enzyme.select(data, "items[*][?flag == true::bool_str].name", bool_str: bool_to_str)
+        Enzyme.select(data, "items[*][?@.flag == true::bool_str].name", bool_str: bool_to_str)
 
       assert result == ["a"]
     end
@@ -376,7 +376,7 @@ defmodule FilterIsoTest do
       atom_to_str = Iso.new(&Atom.to_string/1, &String.to_atom/1)
 
       result =
-        Enzyme.select(data, "items[*][?status == :active::atom_str].name", atom_str: atom_to_str)
+        Enzyme.select(data, "items[*][?@.status == :active::atom_str].name", atom_str: atom_to_str)
 
       assert result == ["a"]
     end
@@ -392,7 +392,7 @@ defmodule FilterIsoTest do
 
       # Uppercase names where count > '10' converted to integer
       result =
-        Enzyme.transform(data, "items[*][?count > '10'::integer].name", &String.upcase/1, [])
+        Enzyme.transform(data, "items[*][?@.count > '10'::integer].name", &String.upcase/1, [])
 
       assert result == %{
                "items" => [
@@ -407,41 +407,41 @@ defmodule FilterIsoTest do
       data = %{"items" => [%{"value" => 42}]}
 
       assert_raise ArgumentError, ~r/Iso 'unknown' is not resolved/, fn ->
-        Enzyme.select(data, "items[*][?value == '10'::unknown]", [])
+        Enzyme.select(data, "items[*][?@.value == '10'::unknown]", [])
       end
     end
   end
 
   describe "parser integration" do
     test "expression parser stores unresolved isos" do
-      expr = Enzyme.ExpressionParser.parse("field::custom == 42")
+      expr = Enzyme.ExpressionParser.parse("@.field::custom == 42")
 
       assert Enzyme.ExpressionParser.has_unresolved_isos?(expr)
     end
 
     test "expression parser always creates IsoRef (resolution at runtime)" do
       iso = Iso.new(& &1, & &1)
-      expr = Enzyme.ExpressionParser.parse("field::custom == 42", custom: iso)
+      expr = Enzyme.ExpressionParser.parse("@.field::custom == 42", custom: iso)
 
       # Even with opts, isos are stored as IsoRef (resolved at runtime)
       assert Enzyme.ExpressionParser.has_unresolved_isos?(expr)
     end
 
     test "expression parser handles builtin iso names" do
-      expr = Enzyme.ExpressionParser.parse("field::integer == 42")
+      expr = Enzyme.ExpressionParser.parse("@.field::integer == 42")
 
       # Builtin isos are not resolved at parse time, only at runtime
       assert Enzyme.ExpressionParser.has_unresolved_isos?(expr)
     end
 
     test "expression parser detects isos on right side" do
-      expr = Enzyme.ExpressionParser.parse("field == '42'::integer")
+      expr = Enzyme.ExpressionParser.parse("@.field == '42'::integer")
 
       assert Enzyme.ExpressionParser.has_unresolved_isos?(expr)
     end
 
     test "expression parser detects isos on both sides" do
-      expr = Enzyme.ExpressionParser.parse("left::integer == right::float")
+      expr = Enzyme.ExpressionParser.parse("@.left::integer == @.right::float")
 
       assert Enzyme.ExpressionParser.has_unresolved_isos?(expr)
     end

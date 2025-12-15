@@ -187,81 +187,81 @@ defmodule EnzymeTest do
 
   describe "select/2 with filters [?expr] using ==" do
     test "filters by string equality" do
-      assert Enzyme.select(@data, "offices[*][?tz == 'PST'].name") == ["HQ"]
+      assert Enzyme.select(@data, "offices[*][?@.tz == 'PST'].name") == ["HQ"]
     end
 
     test "filters by boolean equality" do
-      assert Enzyme.select(@data, "offices[*][?active == true].name") == ["HQ", "East"]
+      assert Enzyme.select(@data, "offices[*][?@.active == true].name") == ["HQ", "East"]
     end
 
     test "filters by integer equality" do
-      assert Enzyme.select(@data, "offices[*][?employee_count == 50].name") == ["East"]
+      assert Enzyme.select(@data, "offices[*][?@.employee_count == 50].name") == ["East"]
     end
 
     test "filters with no matches returns empty list" do
-      assert Enzyme.select(@data, "offices[*][?tz == 'MISSING'].name") == []
+      assert Enzyme.select(@data, "offices[*][?@.tz == 'MISSING'].name") == []
     end
 
     test "filters with double-quoted string" do
-      assert Enzyme.select(@data, "offices[*][?tz == \"EST\"].name") == ["East"]
+      assert Enzyme.select(@data, "offices[*][?@.tz == \"EST\"].name") == ["East"]
     end
 
     test "filters by false boolean" do
-      assert Enzyme.select(@data, "offices[*][?active == false].name") == ["Closed"]
+      assert Enzyme.select(@data, "offices[*][?@.active == false].name") == ["Closed"]
     end
 
     test "filters by zero integer" do
-      assert Enzyme.select(@data, "offices[*][?employee_count == 0].name") == ["Closed"]
+      assert Enzyme.select(@data, "offices[*][?@.employee_count == 0].name") == ["Closed"]
     end
   end
 
   describe "select/2 with filters [?expr] using !=" do
     test "filters by string inequality" do
-      assert Enzyme.select(@data, "offices[*][?tz != 'PST'].name") == ["East", "Closed"]
+      assert Enzyme.select(@data, "offices[*][?@.tz != 'PST'].name") == ["East", "Closed"]
     end
 
     test "filters by boolean inequality" do
-      assert Enzyme.select(@data, "offices[*][?active != true].name") == ["Closed"]
+      assert Enzyme.select(@data, "offices[*][?@.active != true].name") == ["Closed"]
     end
 
     test "filters by integer inequality" do
-      assert Enzyme.select(@data, "offices[*][?employee_count != 0].name") == ["HQ", "East"]
+      assert Enzyme.select(@data, "offices[*][?@.employee_count != 0].name") == ["HQ", "East"]
     end
 
     test "filters excluding multiple values" do
       # Get offices that are not in EST
-      assert Enzyme.select(@data, "offices[*][?tz != 'EST'].name") == ["HQ", "Closed"]
+      assert Enzyme.select(@data, "offices[*][?@.tz != 'EST'].name") == ["HQ", "Closed"]
     end
   end
 
   describe "select/2 with filters [?expr] using ~~ (string equality)" do
     test "compares string to string" do
-      assert Enzyme.select(@data, "offices[*][?tz ~~ 'PST'].name") == ["HQ"]
+      assert Enzyme.select(@data, "offices[*][?@.tz ~~ 'PST'].name") == ["HQ"]
     end
 
     test "compares integer to string representation" do
-      assert Enzyme.select(@data, "offices[*][?employee_count ~~ '100'].name") == ["HQ"]
+      assert Enzyme.select(@data, "offices[*][?@.employee_count ~~ '100'].name") == ["HQ"]
     end
 
     test "compares boolean to string representation" do
-      assert Enzyme.select(@data, "offices[*][?active ~~ 'true'].name") == ["HQ", "East"]
+      assert Enzyme.select(@data, "offices[*][?@.active ~~ 'true'].name") == ["HQ", "East"]
     end
   end
 
   describe "select/2 with filters [?expr] using !~ (string inequality)" do
     test "filters by string inequality" do
-      assert Enzyme.select(@data, "offices[*][?tz !~ 'PST'].name") == ["East", "Closed"]
+      assert Enzyme.select(@data, "offices[*][?@.tz !~ 'PST'].name") == ["East", "Closed"]
     end
 
     test "filters integer by string inequality" do
-      assert Enzyme.select(@data, "offices[*][?employee_count !~ '0'].name") == ["HQ", "East"]
+      assert Enzyme.select(@data, "offices[*][?@.employee_count !~ '0'].name") == ["HQ", "East"]
     end
   end
 
   describe "select/2 with stacked filters" do
     test "filters by two conditions (AND logic)" do
       # Active offices not in PST timezone
-      assert Enzyme.select(@data, "offices[*][?active == true][?tz != 'PST'].name") == ["East"]
+      assert Enzyme.select(@data, "offices[*][?@.active == true][?@.tz != 'PST'].name") == ["East"]
     end
 
     test "filters by three conditions" do
@@ -269,7 +269,7 @@ defmodule EnzymeTest do
       result =
         Enzyme.select(
           @data,
-          "offices[*][?active == true][?tz != 'PST'][?employee_count != 0].name"
+          "offices[*][?@.active == true][?@.tz != 'PST'][?@.employee_count != 0].name"
         )
 
       assert result == ["East"]
@@ -277,12 +277,12 @@ defmodule EnzymeTest do
 
     test "stacked filters that eliminate all results" do
       # Active offices in CST (none exist)
-      assert Enzyme.select(@data, "offices[*][?active == true][?tz == 'CST'].name") == []
+      assert Enzyme.select(@data, "offices[*][?@.active == true][?@.tz == 'CST'].name") == []
     end
 
     test "stacked filters on nested data" do
       # Get city from active offices in PST
-      result = Enzyme.select(@data, "offices[*][?active == true][?tz == 'PST'].address[1]")
+      result = Enzyme.select(@data, "offices[*][?@.active == true][?@.tz == 'PST'].address[1]")
       assert result == ["Beverly Hills"]
     end
   end
@@ -306,18 +306,18 @@ defmodule EnzymeTest do
   describe "select/2 with complex paths" do
     test "combines wildcard, index, and filter" do
       # Get address line 0 for active offices
-      result = Enzyme.select(@data, "offices[*][?active == true].address[0]")
+      result = Enzyme.select(@data, "offices[*][?@.active == true].address[0]")
       assert result == ["Main Street 1", "2142 Madison Ave"]
     end
 
     test "combines slice with filter" do
       # Get names from first two offices that are active
-      result = Enzyme.select(@data, "offices[0,1][?active == true].name")
+      result = Enzyme.select(@data, "offices[0,1][?@.active == true].name")
       assert result == ["HQ", "East"]
     end
 
     test "filter then select multiple keys" do
-      result = Enzyme.select(@data, "offices[*][?tz == 'PST'][name,employee_count]")
+      result = Enzyme.select(@data, "offices[*][?@.tz == 'PST'][name,employee_count]")
       assert result == [["HQ", 100]]
     end
   end
@@ -409,7 +409,7 @@ defmodule EnzymeTest do
 
   describe "transform/3 with filters" do
     test "transforms only filtered elements" do
-      result = Enzyme.transform(@data, "offices[*][?active == true].name", &String.upcase/1)
+      result = Enzyme.transform(@data, "offices[*][?@.active == true].name", &String.upcase/1)
       # Active offices transformed
       assert get_in(result, ["offices", Access.at(0), "name"]) == "HQ"
       assert get_in(result, ["offices", Access.at(1), "name"]) == "EAST"
@@ -419,7 +419,7 @@ defmodule EnzymeTest do
 
     test "transforms with filter by string" do
       result =
-        Enzyme.transform(@data, "offices[*][?tz == 'PST'].employee_count", fn c -> c * 2 end)
+        Enzyme.transform(@data, "offices[*][?@.tz == 'PST'].employee_count", fn c -> c * 2 end)
 
       # HQ doubled
       assert get_in(result, ["offices", Access.at(0), "employee_count"]) == 200
@@ -432,7 +432,7 @@ defmodule EnzymeTest do
       result =
         Enzyme.transform(
           @data,
-          "offices[*][?active == true][?tz != 'PST'].name",
+          "offices[*][?@.active == true][?@.tz != 'PST'].name",
           &String.downcase/1
         )
 
@@ -445,7 +445,7 @@ defmodule EnzymeTest do
     end
 
     test "transforms with filter that matches nothing" do
-      result = Enzyme.transform(@data, "offices[*][?tz == 'MISSING'].name", &String.upcase/1)
+      result = Enzyme.transform(@data, "offices[*][?@.tz == 'MISSING'].name", &String.upcase/1)
       # Everything unchanged
       assert get_in(result, ["offices", Access.at(0), "name"]) == "HQ"
       assert get_in(result, ["offices", Access.at(1), "name"]) == "East"
@@ -460,7 +460,7 @@ defmodule EnzymeTest do
     end
 
     test "replaces filtered elements with value" do
-      result = Enzyme.transform(@data, "offices[*][?active == false].active", true)
+      result = Enzyme.transform(@data, "offices[*][?@.active == false].active", true)
       # Inactive office now active
       assert get_in(result, ["offices", Access.at(2), "active"]) == true
       # Others still true
@@ -494,7 +494,7 @@ defmodule EnzymeTest do
     end
 
     test "filter with whitespace" do
-      assert Enzyme.select(@data, "offices[*][? tz == 'PST' ].name") == ["HQ"]
+      assert Enzyme.select(@data, "offices[*][? @.tz == 'PST' ].name") == ["HQ"]
     end
 
     test "chained missing keys return nil" do
@@ -561,7 +561,7 @@ defmodule EnzymeTest do
         ]
       }
 
-      assert Enzyme.select(data, ":items[*][?active == true]:name") == ["a"]
+      assert Enzyme.select(data, ":items[*][?@:active == true]:name") == ["a"]
     end
 
     test "works with numeric indices" do

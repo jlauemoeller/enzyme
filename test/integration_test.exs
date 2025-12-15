@@ -87,7 +87,7 @@ defmodule Enzyme.IntegrationTest do
       result =
         Enzyme.select(
           orders,
-          "orders[*][?customer:tier == :premium][?shipping.method == 'express']:{:confirmed, _}.customer.name"
+          "orders[*][?@.customer:tier == :premium][?@.shipping.method == 'express']:{:confirmed, _}.customer.name"
         )
 
       assert result == ["Alice Smith"]
@@ -134,7 +134,7 @@ defmodule Enzyme.IntegrationTest do
       result =
         Enzyme.select(
           orders,
-          "orders[*].items[*][?qty::integer > 1][name,qty]"
+          "orders[*].items[*][?@.qty::integer > 1][name,qty]"
         )
 
       assert result == [[["Wireless Mouse", "2"]], [], [["HDMI Cable", "3"]]]
@@ -207,7 +207,7 @@ defmodule Enzyme.IntegrationTest do
       result =
         Enzyme.transform(
           order,
-          "items[*][?price::cents < 15].discount",
+          "items[*][?@.price::cents < 15].discount",
           "0.0",
           isos
         )
@@ -267,7 +267,7 @@ defmodule Enzyme.IntegrationTest do
       result =
         Enzyme.select(
           response,
-          "data.users[*]:{:ok, u}[?score::integer >= 90]:name"
+          "data.users[*]:{:ok, u}[?@:score::integer >= 90]:name"
         )
 
       assert result == ["Alice", "Carol"]
@@ -415,7 +415,7 @@ defmodule Enzyme.IntegrationTest do
       result =
         Enzyme.select(
           config,
-          ":environments:production.features[*][?enabled == true and rollout::float > 0.5]:name"
+          ":environments:production.features[*][?@:enabled == true and @:rollout::float > 0.5]:name"
         )
 
       assert result == [:dark_mode]
@@ -497,7 +497,7 @@ defmodule Enzyme.IntegrationTest do
       result =
         Enzyme.transform(
           config,
-          ":flags[*]:{:feature, name, enabled}[?enabled == false]",
+          ":flags[*]:{:feature, name, enabled}[?@:enabled == false]",
           fn {name, _} -> {name, true} end
         )
 
@@ -565,7 +565,7 @@ defmodule Enzyme.IntegrationTest do
       result =
         Enzyme.select(
           events,
-          "events[*][?type == 'page_view' and data.duration_ms::integer > 1000].data.path"
+          "events[*][?@.type == 'page_view' and @.data.duration_ms::integer > 1000].data.path"
         )
 
       assert result == ["/home", "/checkout"]
@@ -582,14 +582,14 @@ defmodule Enzyme.IntegrationTest do
     test "extract error event details", %{events: events} do
       # Combines: wildcard, filter, nested key slice
       result =
-        Enzyme.select(events, "events[*][?type == 'error'].data[message,code]")
+        Enzyme.select(events, "events[*][?@.type == 'error'].data[message,code]")
 
       assert result == [["Payment failed", "PAY_001"]]
     end
 
     test "get click coordinates as integers", %{events: events} do
       # Combines: wildcard, filter, nested access, multiple selections with iso
-      clicks = Enzyme.select(events, "events[*][?type == 'click'].data")
+      clicks = Enzyme.select(events, "events[*][?@.type == 'click'].data")
 
       assert length(clicks) == 1
       click = hd(clicks)
@@ -620,7 +620,7 @@ defmodule Enzyme.IntegrationTest do
       result =
         Enzyme.transform(
           events,
-          "events[*][?type == 'view'].value::integer",
+          "events[*][?@.type == 'view'].value::integer",
           fn v -> trunc(v * 1.2) end,
           []
         )
@@ -633,7 +633,7 @@ defmodule Enzyme.IntegrationTest do
 
     test "rename event types", %{events: events} do
       # Combines: wildcard, filter, constant replacement
-      result = Enzyme.transform(events, "events[*][?type == 'view'].type", "page_view")
+      result = Enzyme.transform(events, "events[*][?@.type == 'view'].type", "page_view")
 
       evts = result["events"]
       assert %{"type" => "page_view"} = Enum.at(evts, 0)
@@ -668,7 +668,7 @@ defmodule Enzyme.IntegrationTest do
       }
 
       # Items where NOT (a AND b) - should exclude first item only
-      result = Enzyme.select(data, "items[*][?not (a == true and b == true)]")
+      result = Enzyme.select(data, "items[*][?not (@.a == true and @.b == true)]")
 
       assert length(result) == 3
       refute Enum.any?(result, fn item -> item["a"] == true and item["b"] == true end)
@@ -709,7 +709,7 @@ defmodule Enzyme.IntegrationTest do
       result =
         Enzyme.select(
           data,
-          ":users[*].profile[?verified == true and score::integer >= 90]:score::integer",
+          ":users[*].profile[?@:verified == true and @:score::integer >= 90]:score::integer",
           []
         )
 
@@ -728,7 +728,7 @@ defmodule Enzyme.IntegrationTest do
       }
 
       # Get active items from first 3 items only
-      result = Enzyme.select(data, "items[0,1,2][?active == true].id")
+      result = Enzyme.select(data, "items[0,1,2][?@.active == true].id")
 
       assert result == [1, 3]
     end
@@ -885,7 +885,7 @@ defmodule Enzyme.IntegrationTest do
       result =
         Enzyme.select(
           data,
-          "teams[*][?active == true].members[*][?role == 'dev'].name"
+          "teams[*][?@.active == true].members[*][?@.role == 'dev'].name"
         )
 
       assert result == ["Bob", "Dave", "Eve"]
@@ -950,7 +950,7 @@ defmodule Enzyme.IntegrationTest do
       result =
         Enzyme.transform(
           data,
-          "organizations[*][?active == true].departments[*][?budget >= 1000].budget",
+          "organizations[*][?@.active == true].departments[*][?@.budget >= 1000].budget",
           fn b -> trunc(b * 1.1) end
         )
 
@@ -1115,7 +1115,7 @@ defmodule Enzyme.IntegrationTest do
         ]
       }
 
-      result = Enzyme.select(data, "items[*][?label == 'normal'].id")
+      result = Enzyme.select(data, "items[*][?@.label == 'normal'].id")
       assert result == ["item-2"]
     end
 
@@ -1129,7 +1129,7 @@ defmodule Enzyme.IntegrationTest do
       }
 
       # Select non-deleted records
-      result = Enzyme.select(data, "records[*][?deleted_at == nil].id")
+      result = Enzyme.select(data, "records[*][?@.deleted_at == nil].id")
       assert result == [1, 3]
     end
 
@@ -1147,7 +1147,7 @@ defmodule Enzyme.IntegrationTest do
       result =
         Enzyme.select(
           data,
-          "products[*][?active == true][?stock > 0][?price < 250].name"
+          "products[*][?@.active == true][?@.stock > 0][?@.price < 250].name"
         )
 
       assert result == ["A"]

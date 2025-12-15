@@ -273,33 +273,33 @@ defmodule Enzyme.ParserTest do
 
   describe "parse/1 with filter expressions [?...]" do
     test "parses simple filter expression" do
-      result = Parser.parse("[?active == true]")
+      result = Parser.parse("[?@:active == true]")
       assert %Filter{predicate: pred} = result
       assert pred.(%{active: true}) == true
       assert pred.(%{active: false}) == false
     end
 
     test "parses filter with string comparison" do
-      result = Parser.parse("[?name == 'test']")
+      result = Parser.parse("[?@.name == 'test']")
       assert %Filter{predicate: pred} = result
-      assert pred.(%{name: "test"}) == true
-      assert pred.(%{name: "other"}) == false
+      assert pred.(%{"name" => "test"}) == true
+      assert pred.(%{"name" => "other"}) == false
     end
 
     test "parses filter in a path" do
-      result = Parser.parse("users[?active == true]")
+      result = Parser.parse("users[?@:active == true]")
       assert %Sequence{lenses: [%One{index: "users"}, %Filter{predicate: pred}]} = result
       assert pred.(%{active: true}) == true
     end
 
     test "parses filter after wildcard" do
-      result = Parser.parse("[*][?score == 100]")
+      result = Parser.parse("[*][?@:score == 100]")
       assert %Sequence{lenses: [%All{}, %Filter{predicate: pred}]} = result
       assert pred.(%{score: 100}) == true
     end
 
     test "parses multiple filters (stacked)" do
-      result = Parser.parse("[*][?active == true][?role == 'admin']")
+      result = Parser.parse("[*][?@:active == true][?@:role == 'admin']")
 
       assert %Sequence{lenses: [%All{}, %Filter{predicate: pred1}, %Filter{predicate: pred2}]} =
                result
@@ -316,14 +316,14 @@ defmodule Enzyme.ParserTest do
     end
 
     test "parses filter with string equality operator" do
-      result = Parser.parse("[?type ~~ 'book']")
+      result = Parser.parse("[?@:type ~~ 'book']")
       assert %Filter{predicate: pred} = result
       assert pred.(%{type: "book"}) == true
       assert pred.(%{type: :book}) == true
     end
 
     test "parses filter with inequality" do
-      result = Parser.parse("[?status != 'closed']")
+      result = Parser.parse("[?@:status != 'closed']")
       assert %Filter{predicate: pred} = result
       assert pred.(%{status: "open"}) == true
       assert pred.(%{status: "closed"}) == false

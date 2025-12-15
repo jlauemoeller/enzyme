@@ -13,7 +13,7 @@ defmodule Enzyme.LogicalOperatorTest do
       }
 
       # Active admins only
-      result = Enzyme.select(data, "users[*][?active == true and role == 'admin'].name")
+      result = Enzyme.select(data, "users[*][?@.active == true and @.role == 'admin'].name")
       assert result == ["Alice"]
     end
 
@@ -27,7 +27,7 @@ defmodule Enzyme.LogicalOperatorTest do
       }
 
       # Admins or superusers
-      result = Enzyme.select(data, "users[*][?role == 'admin' or role == 'superuser'].name")
+      result = Enzyme.select(data, "users[*][?@.role == 'admin' or @.role == 'superuser'].name")
       assert result == ["Alice", "Bob"]
     end
 
@@ -41,7 +41,7 @@ defmodule Enzyme.LogicalOperatorTest do
       }
 
       # Non-deleted items
-      result = Enzyme.select(data, "items[*][?not deleted == true].name")
+      result = Enzyme.select(data, "items[*][?not @.deleted == true].name")
       assert result == ["a", "c"]
     end
 
@@ -59,7 +59,7 @@ defmodule Enzyme.LogicalOperatorTest do
       result =
         Enzyme.select(
           data,
-          "products[*][?featured == true or (category == 'electronics' and price > 100)].name"
+          "products[*][?@.featured == true or (@.category == 'electronics' and @.price > 100)].name"
         )
 
       assert result == ["Widget", "Gadget", "Thing"]
@@ -79,7 +79,7 @@ defmodule Enzyme.LogicalOperatorTest do
       result =
         Enzyme.select(
           data,
-          "employees[*][?(dept == 'Engineering' and score >= 80) or (dept == 'Sales' and score >= 85)].name"
+          "employees[*][?(@.dept == 'Engineering' and @.score >= 80) or (@.dept == 'Sales' and @.score >= 85)].name"
         )
 
       assert result == ["Alice", "Charlie"]
@@ -99,7 +99,7 @@ defmodule Enzyme.LogicalOperatorTest do
       result =
         Enzyme.select(
           data,
-          "items[*][?not (status == 'inactive' and type == 'regular')].name"
+          "items[*][?not (@.status == 'inactive' and @.type == 'regular')].name"
         )
 
       assert result == ["a", "b", "c"]
@@ -116,7 +116,7 @@ defmodule Enzyme.LogicalOperatorTest do
       }
 
       # All three conditions must be true
-      result = Enzyme.select(data, "records[*][?a == 1 and b == 2 and c == 3]")
+      result = Enzyme.select(data, "records[*][?@.a == 1 and @.b == 2 and @.c == 3]")
       assert result == [%{"a" => 1, "b" => 2, "c" => 3}]
     end
 
@@ -131,7 +131,7 @@ defmodule Enzyme.LogicalOperatorTest do
 
       # Active items with count > 7
       result =
-        Enzyme.select(data, "items[*][?active == true and count::integer > 7].name", [])
+        Enzyme.select(data, "items[*][?@.active == true and @.count::integer > 7].name", [])
 
       assert result == ["a"]
     end
@@ -149,7 +149,7 @@ defmodule Enzyme.LogicalOperatorTest do
       result =
         Enzyme.transform(
           data,
-          "users[*][?active == true and role == 'admin'].name",
+          "users[*][?@.active == true and @.role == 'admin'].name",
           &String.upcase/1
         )
 

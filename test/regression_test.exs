@@ -90,10 +90,11 @@ defmodule Enzyme.RegressionTest do
     end
 
     test "selecting through multiple [*] levels with filtering", %{data: data} do
-      assert Enzyme.select(data, "departments[*][?name == 'Engineering'].employees[*].name") == [
-               "Alice",
-               "Bob"
-             ]
+      assert Enzyme.select(data, "departments[*][?@.name == 'Engineering'].employees[*].name") ==
+               [
+                 "Alice",
+                 "Bob"
+               ]
     end
 
     test "transforming through multiple [*] levels", %{data: data} do
@@ -230,19 +231,29 @@ defmodule Enzyme.RegressionTest do
     end
   end
 
-  describe "tracing" do
-    setup do
+  describe "Filters with maps" do
+    test "filters maps in single lists" do
       data = [
-        %{"user" => %{"name" => "alice", "age" => 30}},
-        %{"user" => %{"name" => "bob", "age" => 25}}
+        %{active: false, name: "a"},
+        %{active: true, name: "b"},
+        %{active: true, name: "c"}
       ]
 
-      [data: data]
+      assert Enzyme.select(data, "[?@:name == 'c']") == [
+               %{active: true, name: "c"}
+             ]
     end
 
-    test "tracing through sequence of lenses", %{data: data} do
-      assert Enzyme.select(data, "[*].user.name") ==
-               ["alice", "bob"]
+    test "filters many single maps" do
+      data = [
+        %{active: false, name: "a"},
+        %{active: true, name: "b"},
+        %{active: true, name: "c"}
+      ]
+
+      assert Enzyme.select(data, "[*][?@:name == 'c']") == [
+               %{active: true, name: "c"}
+             ]
     end
   end
 end

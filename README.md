@@ -95,7 +95,7 @@ Let's apply a 10% discount to all items over €50, automatically converting to/
 ```elixir
 Enzyme.transform(
   products,
-  "items[*][?price::cents > 50].price::cents",
+  "items[*][?@.price::cents > 50].price::cents",
   fn price -> price * 0.9 end,
   isos
 )
@@ -139,7 +139,7 @@ Enzyme comes with several built-in isomorphisms such as `integer` and `float` fo
 ```elixir
 Enzyme.select(
   products,
-  "items[*][?updated_at::iso8601 > '2024-01-15T00:00:00Z'::iso8601].name"
+  "items[*][?@.updated_at::iso8601 > '2024-01-15T00:00:00Z'::iso8601].name"
 )
 # => ["Laptop", "Keyboard"]
 ```
@@ -309,26 +309,26 @@ data = %{
 }
 
 # Filter by boolean
-Enzyme.select(data, "products[*][?in_stock == true].name")
+Enzyme.select(data, "products[*][?@.in_stock == true].name")
 # => ["Widget", "Gizmo"]
 
 # Filter by string
-Enzyme.select(data, "products[*][?name == 'Widget'].price")
+Enzyme.select(data, "products[*][?@.name == 'Widget'].price")
 # => [25]
 
 # Filter by number
-Enzyme.select(data, "products[*][?price == 99].name")
+Enzyme.select(data, "products[*][?@.price == 99].name")
 # => ["Gadget"]
 
 # Inequality
-Enzyme.select(data, "products[*][?in_stock != true].name")
+Enzyme.select(data, "products[*][?@.in_stock != true].name")
 # => ["Gadget"]
 
 # Comparison operators
-Enzyme.select(data, "products[*][?price > 30].name")
+Enzyme.select(data, "products[*][?@.price > 30].name")
 # => ["Gadget", "Gizmo"]
 
-Enzyme.select(data, "products[*][?price <= 50].name")
+Enzyme.select(data, "products[*][?@.price <= 50].name")
 # => ["Widget", "Gizmo"]
 ```
 
@@ -354,11 +354,11 @@ The `~~` and `!~` operators convert their operands to strings using `to_string/1
 
 ```elixir
 # String-based comparison
-data = %{"items" => [%{type: :book}, %{"type" => "book"}]}
+data = %{"items" => [%{type: :book}, %{type: "book"}]}
 
 # Matches both atom and string
-Enzyme.select(data, "items[*][?type ~~ 'book']")
-# => [%{type: :book}, %{"type" => "book"}]
+Enzyme.select(data, "items[*][?@:type ~~ 'book']")
+# => [%{type: :book}, %{type: "book"}]
 ```
 
 Combine conditions using `and`, `or`, and `not`:
@@ -373,15 +373,15 @@ data = %{
 }
 
 # AND: both conditions must be true
-Enzyme.select(data, "users[*][?active == true and role == 'admin'].name")
+Enzyme.select(data, "users[*][?@.active == true and @.role == 'admin'].name")
 # => ["Alice"]
 
 # OR: either condition can be true
-Enzyme.select(data, "users[*][?role == 'admin' or role == 'superuser'].name")
+Enzyme.select(data, "users[*][?@.role == 'admin' or @.role == 'superuser'].name")
 # => ["Alice", "Charlie"]
 
 # NOT: negate a condition
-Enzyme.select(data, "users[*][?not active == true].name")
+Enzyme.select(data, "users[*][?not @.active == true].name")
 # => ["Charlie"]
 ```
 
@@ -403,15 +403,15 @@ data = %{
 }
 
 # Without parentheses: featured OR (electronics AND price > 100)
-Enzyme.select(data, "products[*][?featured == true or category == 'electronics' and price > 100].name")
+Enzyme.select(data, "products[*][?@.featured == true or @.category == 'electronics' and @.price > 100].name")
 # => ["Widget", "Gadget"]
 
 # With parentheses: (featured OR electronics) AND price > 100
-Enzyme.select(data, "products[*][?(featured == true or category == 'electronics') and price > 100].name")
+Enzyme.select(data, "products[*][?( @.featured == true or @.category == 'electronics') and @.price > 100].name")
 # => ["Gadget"]
 
 # NOT with parentheses
-Enzyme.select(data, "products[*][?not (category == 'tools' and featured == false)].name")
+Enzyme.select(data, "products[*][?not (@.category == 'tools' and @.featured == false)].name")
 # => ["Widget", "Gadget"]
 ```
 
@@ -429,7 +429,7 @@ data = %{
 }
 
 # Senior engineers only
-Enzyme.select(data, "employees[*][?dept == 'Engineering'][?level == 'senior'].name")
+Enzyme.select(data, "employees[*][?@.dept == 'Engineering'][?@.level == 'senior'].name")
 # => ["Alice"]
 ```
 
@@ -446,7 +446,6 @@ Enzyme.select(data, "scores[*][?@ == 95]")
 
 # @.field is equivalent to field
 Enzyme.select(data, "users[*][?@.active == true].name")
-# Same as: "users[*][?active == true].name"
 ```
 
 #### Isos in Filters
@@ -464,17 +463,17 @@ data = %{
 }
 
 # Filter by converted integer value (left side)
-Enzyme.select(data, "items[*][?count::integer == 42].name", [])
+Enzyme.select(data, "items[*][?@.count::integer == 42].name", [])
 # => ["a", "c"]
 
 # Filter by converted integer value (right side)
 data = %{"items" => [%{"value" => 42}, %{"value" => 7}]}
-Enzyme.select(data, "items[*][?value == '42'::integer]", [])
+Enzyme.select(data, "items[*][?@.value == '42'::integer]", [])
 # => [%{"value" => 42}]
 
 # Both sides with isos
 data = %{"items" => [%{"left" => "10", "right" => "10"}]}
-Enzyme.select(data, "items[*][?left::integer == right::integer]", [])
+Enzyme.select(data, "items[*][?@.left::integer == @.right::integer]", [])
 # => [%{"left" => "10", "right" => "10"}]
 
 # Chain isos: decode base64, then parse as integer
@@ -485,7 +484,7 @@ Enzyme.select(data, "codes[*][?@::base64::integer == 42]", [])
 # Custom iso
 cents_iso = Enzyme.iso(&(&1 / 100), &(trunc(&1 * 100)))
 data = %{"items" => [%{"price" => 999}, %{"price" => 1599}]}
-Enzyme.select(data, "items[*][?price::cents == 15.99]", cents: cents_iso)
+Enzyme.select(data, "items[*][?@.price::cents == 15.99]", cents: cents_iso)
 # => [%{"price" => 1599}]
 ```
 
@@ -804,7 +803,7 @@ Enzyme.transform(data, "users[*].score", 0)
 # => %{"users" => [%{"name" => "alice", "score" => 0}, ...]}
 
 # Transform only matching elements
-Enzyme.transform(data, "users[*][?score == 85].score", fn s -> s + 10 end)
+Enzyme.transform(data, "users[*][?@.score == 85].score", fn s -> s + 10 end)
 # => %{"users" => [%{"name" => "alice", "score" => 95}, %{"name" => "bob", "score" => 92}]}
 ```
 
@@ -863,7 +862,7 @@ Enzyme.select(data, "departments[*].employees[*].name")
 # => ["Alice", "Bob", "Charlie"]
 
 # Get employees from Engineering only
-Enzyme.select(data, "departments[*][?name == 'Engineering'].employees[*].name")
+Enzyme.select(data, "departments[*][?@.name == 'Engineering'].employees[*].name")
 # => ["Alice", "Bob"]
 
 # Update all titles
@@ -884,12 +883,12 @@ Enzyme.transform(data, "departments[*].employees[*].title", &String.upcase/1)
 | `[a,b,...]`     | Multiple string keys                  | `user[name,email]`                          |
 | `[:atom]`       | Atom key in brackets                  | `data[:key]`                                |
 | `[:a,:b]`       | Multiple atom keys                    | `data[:foo,:bar]`                           |
-| `[?expr]`       | Filter expression                     | `users[*][?active == true]`                 |
-| `[?a and b]`    | Filter with logical AND               | `[?active == true and role == 'admin']`     |
-| `[?a or b]`     | Filter with logical OR                | `[?role == 'admin' or role == 'user']`      |
-| `[?not expr]`   | Filter with logical NOT               | `[?not deleted == true]`                    |
-| `[?(expr)]`     | Filter with grouping                  | `[?(a == 1 or b == 2) and c == 3]`          |
-| `[?f::iso==v]`  | Filter with iso (either/both sides)   | `[?count::integer == '42'::integer]`        |
+| `[?expr]`       | Filter expression                     | `users[*][?@.active == true]`               |
+| `[?a and b]`    | Filter with logical AND               | `[?@.active == true and @.role == 'admin']` |
+| `[?a or b]`     | Filter with logical OR                | `[?@.role == 'admin' or @.role == 'user']`  |
+| `[?not expr]`   | Filter with logical NOT               | `[?not @.deleted == true]`                  |
+| `[?(expr)]`     | Filter with grouping                  | `[?( @.a == 1 or @.b == 2) and @.c == 3]`   |
+| `[?f::iso==v]`  | Filter with iso (either/both sides)   | `[?@.count::integer == '42'::integer]`      |
 | `:{:tag, a, b}` | Prism (extract named positions)       | `:{:ok, v}`, `:{:rect, w, h}`               |
 | `:{:tag, _, b}` | Prism (ignore positions with `_`)     | `:{:rectangle, _, h}`                       |
 | `:{:tag, ...}`  | Prism (extract all after tag)         | `:{:ok, ...}`                               |

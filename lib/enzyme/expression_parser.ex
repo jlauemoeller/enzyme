@@ -10,7 +10,7 @@ defmodule Enzyme.ExpressionParser do
   # - primary := '(' expression ')' | comparison
   # - comparison := operand cmp_operator operand
   # - operand := ('@' | field | literal) iso_chain?
-  # - field := '@.'? identifier
+  # - field := '@.' identifier | '@:' identifier
   # - iso_chain := '::' identifier iso_chain?
   # - literal := string | number | boolean | atom_literal
   # - cmp_operator := '==' | '!=' | '<' | '<=' | '>' | '>=' | '~~' | '!~'
@@ -40,7 +40,7 @@ defmodule Enzyme.ExpressionParser do
 
   ## Examples
 
-      iex> Enzyme.ExpressionParser.parse("field == 'value'")
+      iex> Enzyme.ExpressionParser.parse("@.field == 'value'")
       %Enzyme.Expression{
         left: {:field, "field"},
         operator: :eq,
@@ -131,12 +131,68 @@ defmodule Enzyme.ExpressionParser do
 
   defp parse_primary(input, opts), do: parse_comparison(input, opts)
 
-  # Parse comparison: operand cmp_operator operand
+  # Parse comparison: operand cmp_operator operand, or just operand
   defp parse_comparison(input, opts) do
     {left, rest} = parse_operand(input, opts)
-    {operator, rest} = parse_cmp_operator(String.trim(rest))
-    {right, rest} = parse_operand(String.trim(rest), opts)
-    {%Expression{left: left, operator: operator, right: right}, rest}
+    trimmed_rest = String.trim(rest)
+
+    # Try to parse a comparison operator
+    case try_parse_cmp_operator(trimmed_rest) do
+      {:ok, operator, after_op} ->
+        {right, final_rest} = parse_operand(String.trim(after_op), opts)
+        {%Expression{left: left, operator: operator, right: right}, final_rest}
+
+      :none ->
+        # No operator found - return the operand as-is
+        {left, rest}
+    end
+  end
+
+  # Try to parse a comparison operator without raising an error
+  defp try_parse_cmp_operator(input) do
+    case parse_cmp_operator_internal(input) do
+      {:ok, op, rest} -> {:ok, op, rest}
+      :error -> :none
+    end
+  end
+
+  defp parse_cmp_operator_internal("==" <> rest), do: {:ok, :eq, rest}
+  defp parse_cmp_operator_internal("!=" <> rest), do: {:ok, :neq, rest}
+  defp parse_cmp_operator_internal("~~" <> rest), do: {:ok, :str_eq, rest}
+  defp parse_cmp_operator_internal("!~" <> rest), do: {:ok, :str_neq, rest}
+  defp parse_cmp_operator_internal("<=" <> rest), do: {:ok, :lte, rest}
+  defp parse_cmp_operator_internal(">=" <> rest), do: {:ok, :gte, rest}
+  defp parse_cmp_operator_internal("<" <> rest), do: {:ok, :lt, rest}
+  defp parse_cmp_operator_internal(">" <> rest), do: {:ok, :gt, rest}
+
+  defp parse_cmp_operator_internal("and" <> rest) do
+    case check_keyword_boundary_safe(rest) do
+      :ok -> {:ok, :and, rest}
+      :error -> :error
+    end
+  end
+
+  defp parse_cmp_operator_internal("or" <> rest) do
+    case check_keyword_boundary_safe(rest) do
+      :ok -> {:ok, :or, rest}
+      :error -> :error
+    end
+  end
+
+  defp parse_cmp_operator_internal(_), do: :error
+
+  # Safe version that returns :ok or :error instead of raising
+  defp check_keyword_boundary_safe(rest) do
+    case rest do
+      "" ->
+        :ok
+
+      <<char, _::binary>> when char in ?a..?z or char in ?A..?Z or char in ?0..?9 or char == ?_ ->
+        :error
+
+      _ ->
+        :ok
+    end
   end
 
   # Check that a keyword isn't part of a larger identifier
@@ -158,18 +214,23 @@ defmodule Enzyme.ExpressionParser do
 
   ## Examples
 
-      iex> expr = Enzyme.ExpressionParser.parse("name == 'test'")
+      iex> expr = Enzyme.ExpressionParser.parse("@.name == 'test'")
       iex> pred = Enzyme.ExpressionParser.compile(expr)
-      iex> pred.(%{name: "test"})
+      iex> pred.(%{"name" => "test"})
       true
-      iex> pred.(%{name: "other"})
+      iex> pred.(%{"name" => "other"})
       false
 
   """
   # Compile logical NOT
-  def compile(%Expression{left: nil, operator: :not, right: right}) do
+  def compile(%Expression{left: nil, operator: :not, right: %Expression{} = right}) do
     right_pred = compile(right)
     fn element -> not right_pred.(element) end
+  end
+
+  # Compile unary NOT on operand
+  def compile(%Expression{left: nil, operator: :not, right: right}) do
+    fn element -> not resolve_operand(right, element) end
   end
 
   # Compile logical AND
@@ -344,13 +405,29 @@ defmodule Enzyme.ExpressionParser do
             "Available builtins: #{builtins}"
   end
 
-  # Parse an operand: @, @.field, field, or literal (with optional ::iso chain)
+  # Parse an operand: @, @.field, @:field, or literal (with optional ::iso chain)
   defp parse_operand("@." <> rest, opts) do
-    # Field access with @ prefix
+    # String field access with @ prefix
     {field_name, remaining} = parse_identifier(rest)
     # Check for iso chain after field
     {isos, remaining} = parse_iso_chain(remaining, opts)
     {wrap_with_isos({:field, field_name}, isos), remaining}
+  end
+
+  defp parse_operand("@:" <> rest, opts) do
+    case rest do
+      ":" <> iso_rest ->
+        # Self reference with iso chain
+        {isos, remaining} = parse_iso_chain("::" <> iso_rest, opts)
+        {wrap_with_isos({:self}, isos), remaining}
+
+      _ ->
+        # Atom field access with @ prefix
+        {field_name, remaining} = parse_identifier(rest)
+        # Check for iso chain after field
+        {isos, remaining} = parse_iso_chain(remaining, opts)
+        {wrap_with_isos({:field, String.to_existing_atom(field_name)}, isos), remaining}
+    end
   end
 
   defp parse_operand("@" <> rest, opts) do
@@ -410,17 +487,8 @@ defmodule Enzyme.ExpressionParser do
     parse_number(input, opts)
   end
 
-  defp parse_operand(input, opts) do
-    # Field name (bare identifier)
-    {field_name, remaining} = parse_identifier(input)
-
-    if field_name == "" do
-      raise "Expected operand but found: #{input}"
-    end
-
-    # Check for iso chain after field
-    {isos, remaining} = parse_iso_chain(remaining, opts)
-    {wrap_with_isos({:field, field_name}, isos), remaining}
+  defp parse_operand(input, _opts) do
+    raise "Expected operand but found: #{input}"
   end
 
   # Parse a chain of ::iso references
@@ -523,21 +591,6 @@ defmodule Enzyme.ExpressionParser do
 
   defp consume_identifier(rest, acc), do: {acc |> Enum.reverse() |> IO.iodata_to_binary(), rest}
 
-  # Parse a comparison operator
-  # Note: Order matters - longer operators must come before shorter prefixes
-  defp parse_cmp_operator("==" <> rest), do: {:eq, rest}
-  defp parse_cmp_operator("!=" <> rest), do: {:neq, rest}
-  defp parse_cmp_operator("~~" <> rest), do: {:str_eq, rest}
-  defp parse_cmp_operator("!~" <> rest), do: {:str_neq, rest}
-  defp parse_cmp_operator("<=" <> rest), do: {:lte, rest}
-  defp parse_cmp_operator(">=" <> rest), do: {:gte, rest}
-  defp parse_cmp_operator("<" <> rest), do: {:lt, rest}
-  defp parse_cmp_operator(">" <> rest), do: {:gt, rest}
-
-  defp parse_cmp_operator(input) do
-    raise "Expected comparison operator (==, !=, <, <=, >, >=, ~~, !~) but found: #{String.slice(input, 0, 10)}"
-  end
-
   # Resolve an operand value against an element
   defp resolve_operand({:self}, element), do: element
 
@@ -564,15 +617,9 @@ defmodule Enzyme.ExpressionParser do
     apply_isos(value, isos)
   end
 
-  # Get a field from a map (tries atom key first, then string key)
-  defp get_field(map, name) when is_map(map) do
-    atom_key = String.to_atom(name)
-
-    cond do
-      Map.has_key?(map, atom_key) -> Map.get(map, atom_key)
-      Map.has_key?(map, name) -> Map.get(map, name)
-      true -> nil
-    end
+  # Get a field from a map
+  defp get_field(map, name) when is_map(map) and (is_binary(name) or is_atom(name)) do
+    Map.get(map, name)
   end
 
   # Apply a chain of isos to a value (forward direction for filtering)
@@ -614,4 +661,6 @@ defmodule Enzyme.ExpressionParser do
   defp naively_apply_operator(:gte, left, right), do: left >= right
   defp naively_apply_operator(:str_eq, left, right), do: to_string(left) == to_string(right)
   defp naively_apply_operator(:str_neq, left, right), do: to_string(left) != to_string(right)
+  defp naively_apply_operator(:and, left, right), do: left and right
+  defp naively_apply_operator(:or, left, right), do: left or right
 end

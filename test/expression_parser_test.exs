@@ -6,208 +6,224 @@ defmodule Enzyme.ExpressionParserTest do
   alias Enzyme.Expression
   alias Enzyme.ExpressionParser
 
-  describe "parse/1" do
-    test "parses field == string literal (single quotes)" do
-      assert ExpressionParser.parse("field == 'value'") == %Expression{
-               left: {:field, "field"},
-               operator: :eq,
-               right: {:literal, "value"}
-             }
-    end
+  @binary_operators %{
+    "==" => [:boolean, :integer, :float, :string, :atom, :string_field, :atom_field],
+    "!=" => [:boolean, :integer, :float, :string, :atom, :string_field, :atom_field],
+    "<" => [:boolean, :integer, :float, :string, :atom, :string_field, :atom_field],
+    ">" => [:boolean, :integer, :float, :string, :atom, :string_field, :atom_field],
+    "<=" => [:boolean, :integer, :float, :string, :atom, :string_field, :atom_field],
+    ">=" => [:boolean, :integer, :float, :string, :atom, :string_field, :atom_field],
+    "~~" => [:boolean, :integer, :float, :string, :atom, :string_field, :atom_field],
+    "!~" => [:boolean, :integer, :float, :string, :atom, :string_field, :atom_field],
+    "and" => [:boolean, :string_field, :atom_field],
+    "or" => [:boolean, :string_field, :atom_field]
+  }
 
-    test "parses field == string literal (double quotes)" do
-      assert ExpressionParser.parse("field == \"value\"") == %Expression{
-               left: {:field, "field"},
-               operator: :eq,
-               right: {:literal, "value"}
-             }
-    end
+  @unary_operators %{
+    "not" => [:boolean, :string_field, :atom_field]
+  }
 
-    test "parses @ == literal" do
-      assert ExpressionParser.parse("@ == 42") == %Expression{
-               left: {:self},
-               operator: :eq,
-               right: {:literal, 42}
-             }
-    end
+  Enum.each(@binary_operators, fn {operator, types} ->
+    for left_type <- types do
+      for right_type <- types do
+        test_name = "parses #{left_type} #{operator} #{right_type}"
 
-    test "parses @.field == literal" do
-      assert ExpressionParser.parse("@.name == 'test'") == %Expression{
-               left: {:field, "name"},
-               operator: :eq,
-               right: {:literal, "test"}
-             }
-    end
+        test test_name do
+          left_operand =
+            case unquote(left_type) do
+              :string_field -> "@.field"
+              :atom_field -> "@:field"
+              :string -> "'value'"
+              :atom -> ":value"
+              :boolean -> "true"
+              :integer -> "42"
+              :float -> "3.14"
+            end
 
-    test "parses field == integer" do
-      assert ExpressionParser.parse("count == 42") == %Expression{
-               left: {:field, "count"},
-               operator: :eq,
-               right: {:literal, 42}
-             }
-    end
+          right_operand =
+            case unquote(right_type) do
+              :string_field -> "@.field"
+              :atom_field -> "@:field"
+              :string -> "'value'"
+              :atom -> ":value"
+              :boolean -> "true"
+              :integer -> "42"
+              :float -> "3.14"
+            end
 
-    test "parses field == negative integer" do
-      assert ExpressionParser.parse("count == -5") == %Expression{
-               left: {:field, "count"},
-               operator: :eq,
-               right: {:literal, -5}
-             }
-    end
+          expression = "#{left_operand} #{unquote(operator)} #{right_operand}"
 
-    test "parses field == float" do
-      assert ExpressionParser.parse("score == 3.14") == %Expression{
-               left: {:field, "score"},
-               operator: :eq,
-               right: {:literal, 3.14}
-             }
-    end
+          expected = %Expression{
+            left:
+              case unquote(left_type) do
+                :string_field -> {:field, "field"}
+                :atom_field -> {:field, :field}
+                :string -> {:literal, "value"}
+                :atom -> {:literal, :value}
+                :boolean -> {:literal, true}
+                :integer -> {:literal, 42}
+                :float -> {:literal, 3.14}
+              end,
+            operator:
+              case unquote(operator) do
+                "==" -> :eq
+                "!=" -> :neq
+                "<" -> :lt
+                "<=" -> :lte
+                ">" -> :gt
+                ">=" -> :gte
+                "~~" -> :str_eq
+                "!~" -> :str_neq
+                "and" -> :and
+                "or" -> :or
+              end,
+            right:
+              case unquote(right_type) do
+                :string_field -> {:field, "field"}
+                :atom_field -> {:field, :field}
+                :string -> {:literal, "value"}
+                :atom -> {:literal, :value}
+                :boolean -> {:literal, true}
+                :integer -> {:literal, 42}
+                :float -> {:literal, 3.14}
+              end
+          }
 
-    test "parses field == boolean true" do
-      assert ExpressionParser.parse("active == true") == %Expression{
-               left: {:field, "active"},
-               operator: :eq,
-               right: {:literal, true}
-             }
+          assert ExpressionParser.parse(expression) == expected,
+                 "Failed to parse expression: #{expression}"
+        end
+      end
     end
+  end)
 
-    test "parses field == boolean false" do
-      assert ExpressionParser.parse("active == false") == %Expression{
-               left: {:field, "active"},
-               operator: :eq,
-               right: {:literal, false}
-             }
+  Enum.each(@unary_operators, fn {operator, types} ->
+    for operand_type <- types do
+      test_name = "parses #{operator} #{operand_type}"
+
+      test test_name do
+        operand =
+          case unquote(operand_type) do
+            :string_field -> "@.field"
+            :atom_field -> "@:field"
+            :string -> "'value'"
+            :atom -> ":value"
+            :boolean -> "true"
+            :integer -> "42"
+            :float -> "3.14"
+          end
+
+        expression = "#{unquote(operator)} #{operand}"
+
+        expected = %Expression{
+          left: nil,
+          operator:
+            case unquote(operator) do
+              "not" -> :not
+            end,
+          right:
+            case unquote(operand_type) do
+              :string_field -> {:field, "field"}
+              :atom_field -> {:field, :field}
+              :string -> {:literal, "value"}
+              :atom -> {:literal, :value}
+              :boolean -> {:literal, true}
+              :integer -> {:literal, 42}
+              :float -> {:literal, 3.14}
+            end
+        }
+
+        assert ExpressionParser.parse(expression) == expected
+      end
     end
+  end)
 
-    test "parses field == nil" do
-      assert ExpressionParser.parse("value == nil") == %Expression{
-               left: {:field, "value"},
-               operator: :eq,
-               right: {:literal, nil}
-             }
-    end
-
-    test "parses field == atom" do
-      assert ExpressionParser.parse("status == :active") == %Expression{
-               left: {:field, "status"},
-               operator: :eq,
-               right: {:literal, :active}
-             }
-    end
-
-    test "parses != operator" do
-      assert ExpressionParser.parse("field != 'value'") == %Expression{
-               left: {:field, "field"},
-               operator: :neq,
-               right: {:literal, "value"}
-             }
-    end
-
-    test "parses ~~ operator" do
-      assert ExpressionParser.parse("type ~~ 'Book'") == %Expression{
-               left: {:field, "type"},
-               operator: :str_eq,
-               right: {:literal, "Book"}
-             }
-    end
-
-    test "parses !~ operator" do
-      assert ExpressionParser.parse("status !~ 'closed'") == %Expression{
-               left: {:field, "status"},
-               operator: :str_neq,
-               right: {:literal, "closed"}
-             }
-    end
-
-    test "parses < operator" do
-      assert ExpressionParser.parse("count < 10") == %Expression{
-               left: {:field, "count"},
-               operator: :lt,
-               right: {:literal, 10}
-             }
-    end
-
-    test "parses <= operator" do
-      assert ExpressionParser.parse("count <= 10") == %Expression{
-               left: {:field, "count"},
-               operator: :lte,
-               right: {:literal, 10}
-             }
-    end
-
-    test "parses > operator" do
-      assert ExpressionParser.parse("count > 10") == %Expression{
-               left: {:field, "count"},
-               operator: :gt,
-               right: {:literal, 10}
-             }
-    end
-
-    test "parses >= operator" do
-      assert ExpressionParser.parse("count >= 10") == %Expression{
-               left: {:field, "count"},
-               operator: :gte,
-               right: {:literal, 10}
-             }
-    end
-
-    test "handles whitespace" do
-      assert ExpressionParser.parse("  field   ==   'value'  ") == %Expression{
-               left: {:field, "field"},
-               operator: :eq,
-               right: {:literal, "value"}
-             }
-    end
-
-    test "parses atom == atom" do
-      assert ExpressionParser.parse(":key == :value") == %Expression{
-               left: {:literal, :key},
-               operator: :eq,
-               right: {:literal, :value}
-             }
-    end
-
+  describe "parse/1 syntax error cases" do
     test "raises on invalid operator" do
-      assert_raise RuntimeError, ~r/Expected comparison operator/, fn ->
-        ExpressionParser.parse("field & 10")
+      assert_raise RuntimeError, ~r/Unexpected characters after expression/, fn ->
+        ExpressionParser.parse("@.field & 10")
       end
     end
 
     test "raises on unterminated string" do
       assert_raise RuntimeError, ~r/Unterminated string/, fn ->
-        ExpressionParser.parse("field == 'value")
+        ExpressionParser.parse("@.field == 'value")
+      end
+    end
+
+    test "raises on right unterminated string" do
+      assert_raise RuntimeError, ~r/Unterminated string/, fn ->
+        ExpressionParser.parse("'value == @.field")
+      end
+    end
+
+    test "raises on left unterminated string" do
+      assert_raise RuntimeError, ~r/Unterminated string/, fn ->
+        ExpressionParser.parse("@.value == 'field")
       end
     end
   end
 
   describe "compile/1 and predicate evaluation" do
-    test "field equality with string value" do
-      expr = ExpressionParser.parse("name == 'test'")
+    test "string field equality with string value" do
+      expr = ExpressionParser.parse("@.name == 'test'")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.(%{"name" => "test"}) == true
+      assert pred.(%{name: "other"}) == false
+      assert pred.(%{name: "test"}) == false
+    end
+
+    test "atom field equality with string value" do
+      expr = ExpressionParser.parse("@:name == 'test'")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{name: "test"}) == true
       assert pred.(%{name: "other"}) == false
-      assert pred.(%{"name" => "test"}) == true
+      assert pred.(%{"name" => "test"}) == false
     end
 
-    test "field equality with integer value" do
-      expr = ExpressionParser.parse("count == 42")
+    test "string field equality with integer value" do
+      expr = ExpressionParser.parse("@.count == 42")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.(%{"count" => 42}) == true
+      assert pred.(%{"count" => 41}) == false
+    end
+
+    test "atom field equality with integer value" do
+      expr = ExpressionParser.parse("@:count == 42")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{count: 42}) == true
       assert pred.(%{count: 41}) == false
     end
 
-    test "field equality with boolean value" do
-      expr = ExpressionParser.parse("active == true")
+    test "string field equality with boolean value" do
+      expr = ExpressionParser.parse("@.active == true")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.(%{"active" => true}) == true
+      assert pred.(%{"active" => false}) == false
+    end
+
+    test "atom field equality with boolean value" do
+      expr = ExpressionParser.parse("@:active == true")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{active: true}) == true
       assert pred.(%{active: false}) == false
     end
 
-    test "field equality with atom value" do
-      expr = ExpressionParser.parse("status == :pending")
+    test "string field equality with atom value" do
+      expr = ExpressionParser.parse("@.status == :pending")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.(%{"status" => :pending}) == true
+      assert pred.(%{"status" => :complete}) == false
+    end
+
+    test "atom field equality with atom value" do
+      expr = ExpressionParser.parse("@:status == :pending")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{status: :pending}) == true
@@ -230,16 +246,33 @@ defmodule Enzyme.ExpressionParserTest do
       assert pred.("world") == false
     end
 
-    test "inequality operator" do
-      expr = ExpressionParser.parse("status != 'closed'")
+    test "string field inequality operator" do
+      expr = ExpressionParser.parse("@.status != 'closed'")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.(%{"status" => "open"}) == true
+      assert pred.(%{"status" => "closed"}) == false
+    end
+
+    test "atom field inequality operator" do
+      expr = ExpressionParser.parse("@:status != 'closed'")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{status: "open"}) == true
       assert pred.(%{status: "closed"}) == false
     end
 
-    test "string equality operator converts to string" do
-      expr = ExpressionParser.parse("value ~~ '42'")
+    test "string field string equality operator converts to string" do
+      expr = ExpressionParser.parse("@.value ~~ '42'")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.(%{"value" => 42}) == true
+      assert pred.(%{"value" => "42"}) == true
+      assert pred.(%{"value" => 41}) == false
+    end
+
+    test "atom field string equality operator converts to string" do
+      expr = ExpressionParser.parse("@:value ~~ '42'")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{value: 42}) == true
@@ -247,33 +280,40 @@ defmodule Enzyme.ExpressionParserTest do
       assert pred.(%{value: 41}) == false
     end
 
-    test "string inequality operator converts to string" do
-      expr = ExpressionParser.parse("value !~ '42'")
+    test "string field string inequality operator converts to string" do
+      expr = ExpressionParser.parse("@.value !~ '42'")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.(%{"value" => 42}) == false
+      assert pred.(%{"value" => 41}) == true
+    end
+
+    test "atom field string inequality operator converts to string" do
+      expr = ExpressionParser.parse("@:value !~ '42'")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{value: 42}) == false
       assert pred.(%{value: 41}) == true
     end
 
-    test "missing field returns nil" do
-      expr = ExpressionParser.parse("missing == nil")
+    test "missing string field returns nil" do
+      expr = ExpressionParser.parse("@.missing == nil")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.(%{"other" => "value"}) == true
+    end
+
+    test "missing atom field returns nil" do
+      expr = ExpressionParser.parse("@:missing == nil")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{other: "value"}) == true
-    end
-
-    test "prefers atom keys over string keys" do
-      expr = ExpressionParser.parse("name == 'atom_value'")
-      pred = ExpressionParser.compile(expr)
-
-      # When both exist, atom key wins
-      assert pred.(%{"name" => "string_value", name: "atom_value"}) == true
     end
   end
 
   describe "logical operators" do
     test "parses and evaluates 'and' operator" do
-      expr = ExpressionParser.parse("active == true and role == 'admin'")
+      expr = ExpressionParser.parse("@:active == true and @:role == 'admin'")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{active: true, role: "admin"}) == true
@@ -283,7 +323,7 @@ defmodule Enzyme.ExpressionParserTest do
     end
 
     test "parses and evaluates 'or' operator" do
-      expr = ExpressionParser.parse("role == 'admin' or role == 'superuser'")
+      expr = ExpressionParser.parse("@:role == 'admin' or @:role == 'superuser'")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{role: "admin"}) == true
@@ -292,7 +332,7 @@ defmodule Enzyme.ExpressionParserTest do
     end
 
     test "parses and evaluates 'not' operator" do
-      expr = ExpressionParser.parse("not active == true")
+      expr = ExpressionParser.parse("not @:active == true")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{active: true}) == false
@@ -300,7 +340,7 @@ defmodule Enzyme.ExpressionParserTest do
     end
 
     test "parses chained 'and' operators (left associative)" do
-      expr = ExpressionParser.parse("a == 1 and b == 2 and c == 3")
+      expr = ExpressionParser.parse("@:a == 1 and @:b == 2 and @:c == 3")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{a: 1, b: 2, c: 3}) == true
@@ -309,7 +349,7 @@ defmodule Enzyme.ExpressionParserTest do
     end
 
     test "parses chained 'or' operators (left associative)" do
-      expr = ExpressionParser.parse("a == 1 or b == 2 or c == 3")
+      expr = ExpressionParser.parse("@:a == 1 or @:b == 2 or @:c == 3")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{a: 1, b: 0, c: 0}) == true
@@ -320,7 +360,7 @@ defmodule Enzyme.ExpressionParserTest do
 
     test "'and' has higher precedence than 'or'" do
       # a or (b and c)
-      expr = ExpressionParser.parse("a == 1 or b == 2 and c == 3")
+      expr = ExpressionParser.parse("@:a == 1 or @:b == 2 and @:c == 3")
       pred = ExpressionParser.compile(expr)
 
       # a=1 makes whole expression true regardless of b and c
@@ -335,7 +375,7 @@ defmodule Enzyme.ExpressionParserTest do
 
     test "'not' has higher precedence than 'and'" do
       # (not a) and b
-      expr = ExpressionParser.parse("not a == true and b == true")
+      expr = ExpressionParser.parse("not @:a == true and @:b == true")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{a: false, b: true}) == true
@@ -344,7 +384,7 @@ defmodule Enzyme.ExpressionParserTest do
     end
 
     test "double not" do
-      expr = ExpressionParser.parse("not not active == true")
+      expr = ExpressionParser.parse("not not @:active == true")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{active: true}) == true
@@ -356,7 +396,7 @@ defmodule Enzyme.ExpressionParserTest do
     test "parentheses override default precedence" do
       # Without parens: a or (b and c)
       # With parens: (a or b) and c
-      expr = ExpressionParser.parse("(a == 1 or b == 2) and c == 3")
+      expr = ExpressionParser.parse("(@:a == 1 or @:b == 2) and @:c == 3")
       pred = ExpressionParser.compile(expr)
 
       # a=1 but c!=3 -> false (parens make 'or' evaluate first, then 'and' with c)
@@ -370,7 +410,7 @@ defmodule Enzyme.ExpressionParserTest do
     end
 
     test "nested parentheses" do
-      expr = ExpressionParser.parse("((a == 1 or b == 2) and c == 3)")
+      expr = ExpressionParser.parse("((@:a == 1 or @:b == 2) and @:c == 3)")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{a: 1, b: 0, c: 3}) == true
@@ -379,7 +419,7 @@ defmodule Enzyme.ExpressionParserTest do
 
     test "parentheses with not" do
       # not (a or b) -- true only when both are false
-      expr = ExpressionParser.parse("not (a == true or b == true)")
+      expr = ExpressionParser.parse("not (@:a == true or @:b == true)")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{a: false, b: false}) == true
@@ -389,7 +429,7 @@ defmodule Enzyme.ExpressionParserTest do
     end
 
     test "complex expression with multiple levels" do
-      expr = ExpressionParser.parse("(a == 1 and b == 2) or (c == 3 and d == 4)")
+      expr = ExpressionParser.parse("(@:a == 1 and @:b == 2) or (@:c == 3 and @:d == 4)")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{a: 1, b: 2, c: 0, d: 0}) == true
@@ -399,14 +439,14 @@ defmodule Enzyme.ExpressionParserTest do
 
     test "raises on unclosed parenthesis" do
       assert_raise RuntimeError, ~r/Expected closing '\)'/, fn ->
-        ExpressionParser.parse("(a == 1 and b == 2")
+        ExpressionParser.parse("(@:a == 1 and @:b == 2")
       end
     end
   end
 
   describe "logical operators with comparison operators" do
     test "works with all comparison operators" do
-      expr = ExpressionParser.parse("count > 5 and count < 10")
+      expr = ExpressionParser.parse("@:count > 5 and @:count < 10")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{count: 7}) == true
@@ -415,7 +455,7 @@ defmodule Enzyme.ExpressionParserTest do
     end
 
     test "complex filter expression" do
-      expr = ExpressionParser.parse("active == true and (score >= 80 or role == 'admin')")
+      expr = ExpressionParser.parse("@:active == true and (@:score >= 80 or @:role == 'admin')")
       pred = ExpressionParser.compile(expr)
 
       assert pred.(%{active: true, score: 90, role: "user"}) == true

@@ -61,7 +61,7 @@ defmodule Enzyme.ReadmeTest do
       result =
         Enzyme.transform(
           @products,
-          "items[*][?price::cents > 50].price::cents",
+          "items[*][?@.price::cents > 50].price::cents",
           fn price -> price * 0.9 end,
           isos
         )
@@ -80,7 +80,7 @@ defmodule Enzyme.ReadmeTest do
       result =
         Enzyme.select(
           @products,
-          "items[*][?updated_at::iso8601 > '2024-01-15T00:00:00Z'::iso8601].name"
+          "items[*][?@.updated_at::iso8601 > '2024-01-15T00:00:00Z'::iso8601].name"
         )
 
       assert result == ["Laptop", "Keyboard"]
@@ -148,24 +148,24 @@ defmodule Enzyme.ReadmeTest do
     end
 
     test "filters by boolean", %{data: data} do
-      assert Enzyme.select(data, "products[*][?in_stock == true].name") == ["Widget", "Gizmo"]
+      assert Enzyme.select(data, "products[*][?@.in_stock == true].name") == ["Widget", "Gizmo"]
     end
 
     test "filters by string", %{data: data} do
-      assert Enzyme.select(data, "products[*][?name == 'Widget'].price") == [25]
+      assert Enzyme.select(data, "products[*][?@.name == 'Widget'].price") == [25]
     end
 
     test "filters by number", %{data: data} do
-      assert Enzyme.select(data, "products[*][?price == 99].name") == ["Gadget"]
+      assert Enzyme.select(data, "products[*][?@.price == 99].name") == ["Gadget"]
     end
 
     test "filters by inequality", %{data: data} do
-      assert Enzyme.select(data, "products[*][?in_stock != true].name") == ["Gadget"]
+      assert Enzyme.select(data, "products[*][?@.in_stock != true].name") == ["Gadget"]
     end
 
     test "filters with comparison operators", %{data: data} do
-      assert Enzyme.select(data, "products[*][?price > 30].name") == ["Gadget", "Gizmo"]
-      assert Enzyme.select(data, "products[*][?price <= 50].name") == ["Widget", "Gizmo"]
+      assert Enzyme.select(data, "products[*][?@.price > 30].name") == ["Gadget", "Gizmo"]
+      assert Enzyme.select(data, "products[*][?@.price <= 50].name") == ["Widget", "Gizmo"]
     end
   end
 
@@ -173,7 +173,7 @@ defmodule Enzyme.ReadmeTest do
     test "matches both atom and string types" do
       data = %{"items" => [%{type: :book}, %{"type" => "book"}]}
 
-      assert Enzyme.select(data, "items[*][?type ~~ 'book']") == [
+      assert Enzyme.select(data, "items[*][?@:type ~~ 'book' or @.type ~~ 'book']") == [
                %{type: :book},
                %{"type" => "book"}
              ]
@@ -194,17 +194,17 @@ defmodule Enzyme.ReadmeTest do
     end
 
     test "AND operator", %{data: data} do
-      assert Enzyme.select(data, "users[*][?active == true and role == 'admin'].name") ==
+      assert Enzyme.select(data, "users[*][?@.active == true and @.role == 'admin'].name") ==
                ["Alice"]
     end
 
     test "OR operator", %{data: data} do
-      assert Enzyme.select(data, "users[*][?role == 'admin' or role == 'superuser'].name") ==
+      assert Enzyme.select(data, "users[*][?@.role == 'admin' or @.role == 'superuser'].name") ==
                ["Alice", "Charlie"]
     end
 
     test "NOT operator", %{data: data} do
-      assert Enzyme.select(data, "users[*][?not active == true].name") == ["Charlie"]
+      assert Enzyme.select(data, "users[*][?not @.active == true].name") == ["Charlie"]
     end
   end
 
@@ -225,7 +225,7 @@ defmodule Enzyme.ReadmeTest do
       result =
         Enzyme.select(
           data,
-          "products[*][?featured == true or category == 'electronics' and price > 100].name"
+          "products[*][?@.featured == true or @.category == 'electronics' and @.price > 100].name"
         )
 
       assert result == ["Widget", "Gadget"]
@@ -235,7 +235,7 @@ defmodule Enzyme.ReadmeTest do
       result =
         Enzyme.select(
           data,
-          "products[*][?(featured == true or category == 'electronics') and price > 100].name"
+          "products[*][?(@.featured == true or @.category == 'electronics') and @.price > 100].name"
         )
 
       assert result == ["Gadget"]
@@ -245,7 +245,7 @@ defmodule Enzyme.ReadmeTest do
       result =
         Enzyme.select(
           data,
-          "products[*][?not (category == 'tools' and featured == false)].name"
+          "products[*][?not (@.category == 'tools' and @.featured == false)].name"
         )
 
       assert result == ["Widget", "Gadget"]
@@ -263,7 +263,7 @@ defmodule Enzyme.ReadmeTest do
       }
 
       result =
-        Enzyme.select(data, "employees[*][?dept == 'Engineering'][?level == 'senior'].name")
+        Enzyme.select(data, "employees[*][?@.dept == 'Engineering'][?@.level == 'senior'].name")
 
       assert result == ["Alice"]
     end
@@ -286,18 +286,18 @@ defmodule Enzyme.ReadmeTest do
         ]
       }
 
-      assert Enzyme.select(data, "items[*][?count::integer == 42].name", []) == ["a", "c"]
+      assert Enzyme.select(data, "items[*][?@.count::integer == 42].name", []) == ["a", "c"]
     end
 
     test "filters by converted integer value (right side)" do
       data = %{"items" => [%{"value" => 42}, %{"value" => 7}]}
-      assert Enzyme.select(data, "items[*][?value == '42'::integer]", []) == [%{"value" => 42}]
+      assert Enzyme.select(data, "items[*][?@.value == '42'::integer]", []) == [%{"value" => 42}]
     end
 
     test "both sides with isos" do
       data = %{"items" => [%{"left" => "10", "right" => "10"}]}
 
-      assert Enzyme.select(data, "items[*][?left::integer == right::integer]", []) == [
+      assert Enzyme.select(data, "items[*][?@.left::integer == @.right::integer]", []) == [
                %{"left" => "10", "right" => "10"}
              ]
     end
@@ -311,7 +311,7 @@ defmodule Enzyme.ReadmeTest do
       cents_iso = Enzyme.iso(&(&1 / 100), &trunc(&1 * 100))
       data = %{"items" => [%{"price" => 999}, %{"price" => 1599}]}
 
-      assert Enzyme.select(data, "items[*][?price::cents == 15.99]", cents: cents_iso) == [
+      assert Enzyme.select(data, "items[*][?@.price::cents == 15.99]", cents: cents_iso) == [
                %{"price" => 1599}
              ]
     end
@@ -592,7 +592,7 @@ defmodule Enzyme.ReadmeTest do
     end
 
     test "transforms only matching elements", %{data: data} do
-      result = Enzyme.transform(data, "users[*][?score == 85].score", fn s -> s + 10 end)
+      result = Enzyme.transform(data, "users[*][?@.score == 85].score", fn s -> s + 10 end)
 
       assert get_in(result, ["users", Access.at(0), "score"]) == 95
       assert get_in(result, ["users", Access.at(1), "score"]) == 92
@@ -647,7 +647,7 @@ defmodule Enzyme.ReadmeTest do
     end
 
     test "gets employees from Engineering only", %{data: data} do
-      result = Enzyme.select(data, "departments[*][?name == 'Engineering'].employees[*].name")
+      result = Enzyme.select(data, "departments[*][?@.name == 'Engineering'].employees[*].name")
       assert result == ["Alice", "Bob"]
     end
 
