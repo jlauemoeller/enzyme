@@ -54,40 +54,47 @@ defmodule Enzyme.ExpressionParserTest do
 
           expression = "#{left_operand} #{unquote(operator)} #{right_operand}"
 
+          op_atom = case unquote(operator) do
+            "==" -> :eq
+            "!=" -> :neq
+            "<" -> :lt
+            "<=" -> :lte
+            ">" -> :gt
+            ">=" -> :gte
+            "~~" -> :str_eq
+            "!~" -> :str_neq
+            "and" -> :and
+            "or" -> :or
+          end
+
+          # For 'and' and 'or', operands are wrapped in Expression with :get operator
+          # For comparison operators, operands are raw
+          wrap_for_logical = op_atom in [:and, :or]
+
+          left_operand_value = case unquote(left_type) do
+            :string_field -> {:field, ["field"]}
+            :atom_field -> {:field, [:field]}
+            :string -> {:literal, "value"}
+            :atom -> {:literal, :value}
+            :boolean -> {:literal, true}
+            :integer -> {:literal, 42}
+            :float -> {:literal, 3.14}
+          end
+
+          right_operand_value = case unquote(right_type) do
+            :string_field -> {:field, ["field"]}
+            :atom_field -> {:field, [:field]}
+            :string -> {:literal, "value"}
+            :atom -> {:literal, :value}
+            :boolean -> {:literal, true}
+            :integer -> {:literal, 42}
+            :float -> {:literal, 3.14}
+          end
+
           expected = %Expression{
-            left:
-              case unquote(left_type) do
-                :string_field -> {:field, ["field"]}
-                :atom_field -> {:field, [:field]}
-                :string -> {:literal, "value"}
-                :atom -> {:literal, :value}
-                :boolean -> {:literal, true}
-                :integer -> {:literal, 42}
-                :float -> {:literal, 3.14}
-              end,
-            operator:
-              case unquote(operator) do
-                "==" -> :eq
-                "!=" -> :neq
-                "<" -> :lt
-                "<=" -> :lte
-                ">" -> :gt
-                ">=" -> :gte
-                "~~" -> :str_eq
-                "!~" -> :str_neq
-                "and" -> :and
-                "or" -> :or
-              end,
-            right:
-              case unquote(right_type) do
-                :string_field -> {:field, ["field"]}
-                :atom_field -> {:field, [:field]}
-                :string -> {:literal, "value"}
-                :atom -> {:literal, :value}
-                :boolean -> {:literal, true}
-                :integer -> {:literal, 42}
-                :float -> {:literal, 3.14}
-              end
+            left: if(wrap_for_logical, do: %Expression{left: left_operand_value, operator: :get, right: nil}, else: left_operand_value),
+            operator: op_atom,
+            right: if(wrap_for_logical, do: %Expression{left: right_operand_value, operator: :get, right: nil}, else: right_operand_value)
           }
 
           assert ExpressionParser.parse(expression) == expected,
@@ -121,16 +128,20 @@ defmodule Enzyme.ExpressionParserTest do
             case unquote(operator) do
               "not" -> :not
             end,
-          right:
-            case unquote(operand_type) do
-              :string_field -> {:field, ["field"]}
-              :atom_field -> {:field, [:field]}
-              :string -> {:literal, "value"}
-              :atom -> {:literal, :value}
-              :boolean -> {:literal, true}
-              :integer -> {:literal, 42}
-              :float -> {:literal, 3.14}
-            end
+          right: %Expression{
+            left:
+              case unquote(operand_type) do
+                :string_field -> {:field, ["field"]}
+                :atom_field -> {:field, [:field]}
+                :string -> {:literal, "value"}
+                :atom -> {:literal, :value}
+                :boolean -> {:literal, true}
+                :integer -> {:literal, 42}
+                :float -> {:literal, 3.14}
+              end,
+            operator: :get,
+            right: nil
+          }
         }
 
         assert ExpressionParser.parse(expression) == expected
@@ -586,6 +597,228 @@ defmodule Enzyme.ExpressionParserTest do
                operator: :gt,
                right: {:literal, 18}
              } = expr
+    end
+  end
+
+  describe "standalone operands without operators" do
+    test "parses standalone field reference" do
+      expr = ExpressionParser.parse("@.field")
+
+      assert %Expression{
+               left: {:field, ["field"]},
+               operator: :get,
+               right: nil
+             } = expr
+    end
+
+    test "parses standalone self reference" do
+      expr = ExpressionParser.parse("@")
+
+      assert %Expression{
+               left: {:self},
+               operator: :get,
+               right: nil
+             } = expr
+    end
+
+    test "parses standalone literal true" do
+      expr = ExpressionParser.parse("true")
+
+      assert %Expression{
+               left: {:literal, true},
+               operator: :get,
+               right: nil
+             } = expr
+    end
+
+    test "parses standalone literal false" do
+      expr = ExpressionParser.parse("false")
+
+      assert %Expression{
+               left: {:literal, false},
+               operator: :get,
+               right: nil
+             } = expr
+    end
+
+    test "parses standalone literal nil" do
+      expr = ExpressionParser.parse("nil")
+
+      assert %Expression{
+               left: {:literal, nil},
+               operator: :get,
+               right: nil
+             } = expr
+    end
+
+    test "parses standalone field with iso" do
+      expr = ExpressionParser.parse("@.count::integer")
+
+      assert %Expression{
+               left: {:field_with_isos, ["count"], [%IsoRef{name: :integer}]},
+               operator: :get,
+               right: nil
+             } = expr
+    end
+
+    test "parses standalone chained field" do
+      expr = ExpressionParser.parse("@.user.profile.verified")
+
+      assert %Expression{
+               left: {:field, ["user", "profile", "verified"]},
+               operator: :get,
+               right: nil
+             } = expr
+    end
+
+    test "parses standalone atom field" do
+      expr = ExpressionParser.parse("@:field")
+
+      assert %Expression{
+               left: {:field, [:field]},
+               operator: :get,
+               right: nil
+             } = expr
+    end
+
+    test "parses standalone number" do
+      expr = ExpressionParser.parse("42")
+
+      assert %Expression{
+               left: {:literal, 42},
+               operator: :get,
+               right: nil
+             } = expr
+    end
+
+    test "parses standalone string" do
+      expr = ExpressionParser.parse("'hello'")
+
+      assert %Expression{
+               left: {:literal, "hello"},
+               operator: :get,
+               right: nil
+             } = expr
+    end
+  end
+
+  describe "compile and evaluate standalone operands" do
+    test "evaluates truthy field values" do
+      expr = ExpressionParser.parse("@.active")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.(%{"active" => true}) == true
+      assert pred.(%{"active" => 1}) == true
+      assert pred.(%{"active" => "yes"}) == true
+      assert pred.(%{"active" => []}) == true
+      assert pred.(%{"active" => %{}}) == true
+      assert pred.(%{"active" => 0}) == true
+    end
+
+    test "evaluates falsy field values" do
+      expr = ExpressionParser.parse("@.active")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.(%{"active" => false}) == false
+      assert pred.(%{"active" => nil}) == false
+      assert pred.(%{"missing" => true}) == false
+    end
+
+    test "evaluates self reference with truthy values" do
+      expr = ExpressionParser.parse("@")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.(true) == true
+      assert pred.(1) == true
+      assert pred.("string") == true
+      assert pred.([]) == true
+      assert pred.(%{}) == true
+      assert pred.(0) == true
+    end
+
+    test "evaluates self reference with falsy values" do
+      expr = ExpressionParser.parse("@")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.(false) == false
+      assert pred.(nil) == false
+    end
+
+    test "evaluates literal true" do
+      expr = ExpressionParser.parse("true")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.("anything") == true
+      assert pred.(%{}) == true
+      assert pred.(nil) == true
+    end
+
+    test "evaluates literal false" do
+      expr = ExpressionParser.parse("false")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.("anything") == false
+      assert pred.(%{}) == false
+      assert pred.(nil) == false
+    end
+
+    test "evaluates literal nil" do
+      expr = ExpressionParser.parse("nil")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.("anything") == false
+      assert pred.(%{}) == false
+      assert pred.(nil) == false
+    end
+
+    test "evaluates chained fields" do
+      expr = ExpressionParser.parse("@.user.profile.verified")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.(%{"user" => %{"profile" => %{"verified" => true}}}) == true
+      assert pred.(%{"user" => %{"profile" => %{"verified" => false}}}) == false
+      assert pred.(%{"user" => %{"profile" => %{"verified" => nil}}}) == false
+      assert pred.(%{"user" => %{"name" => "Alice"}}) == false
+    end
+
+    test "evaluates atom field" do
+      expr = ExpressionParser.parse("@:active")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.(%{active: true}) == true
+      assert pred.(%{active: false}) == false
+      assert pred.(%{active: nil}) == false
+      assert pred.(%{other: true}) == false
+    end
+
+    test "evaluates numeric literal" do
+      expr = ExpressionParser.parse("42")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.("anything") == true
+    end
+
+    test "evaluates zero literal" do
+      expr = ExpressionParser.parse("0")
+      pred = ExpressionParser.compile(expr)
+
+      # In Elixir, 0 is truthy (only nil and false are falsy)
+      assert pred.("anything") == true
+    end
+
+    test "evaluates string literal" do
+      expr = ExpressionParser.parse("'hello'")
+      pred = ExpressionParser.compile(expr)
+
+      assert pred.("anything") == true
+    end
+
+    test "evaluates empty string literal" do
+      expr = ExpressionParser.parse("''")
+      pred = ExpressionParser.compile(expr)
+
+      # In Elixir, empty string is truthy
+      assert pred.("anything") == true
     end
   end
 end

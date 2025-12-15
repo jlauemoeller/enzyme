@@ -32,8 +32,11 @@ defmodule Enzyme.Expression do
     defp format(:not), do: "not"
     defp format(%Expression{} = expr), do: "(#{String.Chars.to_string(expr)})"
     defp format(nil), do: "NIL"
-    defp format({:field, name}), do: ".#{format(name)}"
-    defp format({:field_with_isos, name, isos}), do: ".#{format(name)}::#{format_isos(isos)}"
+    defp format({:field, names}), do: ".#{format_field_chain(names)}"
+
+    defp format({:field_with_isos, names, isos}),
+      do: ".#{format_field_chain(names)}::#{format_isos(isos)}"
+
     defp format({:self_with_isos, isos}), do: "@::#{format_isos(isos)}"
 
     defp format({:literal_with_isos, literal, isos}),
@@ -49,5 +52,12 @@ defmodule Enzyme.Expression do
     end
 
     defp format_iso(%IsoRef{name: name}), do: name
+
+    defp format_field_chain(names) when is_list(names) do
+      Enum.map_join(names, "", fn
+        name when is_atom(name) -> ":#{name}"
+        name when is_binary(name) -> ".#{name}"
+      end)
+    end
   end
 end

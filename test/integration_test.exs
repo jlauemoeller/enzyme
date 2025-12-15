@@ -1714,4 +1714,219 @@ defmodule Enzyme.IntegrationTest do
       assert critical == ["user-service"]
     end
   end
+
+  describe "Truthiness-based filters (standalone boolean expressions)" do
+    test "filters by truthy field" do
+      data = %{
+        "users" => [
+          %{"name" => "Alice", "active" => true},
+          %{"name" => "Bob", "active" => false},
+          %{"name" => "Charlie", "active" => nil},
+          %{"name" => "Dana", "active" => 1},
+          %{"name" => "Eve"}
+        ]
+      }
+
+      result = Enzyme.select(data, "users[*][?@.active].name")
+      assert result == ["Alice", "Dana"]
+    end
+
+    test "filters by nested truthy field" do
+      data = %{
+        "items" => [
+          %{"config" => %{"enabled" => true}},
+          %{"config" => %{"enabled" => false}},
+          %{"config" => %{"other" => "value"}},
+          %{"config" => %{"enabled" => 1}},
+          %{"other" => "data"}
+        ]
+      }
+
+      result = Enzyme.select(data, "items[*][?@.config.enabled]")
+      assert length(result) == 2
+      assert Enum.at(result, 0)["config"]["enabled"] == true
+      assert Enum.at(result, 1)["config"]["enabled"] == 1
+    end
+
+    test "filters with literal true (always matches)" do
+      data = %{"items" => [1, 2, 3, 4, 5]}
+
+      result = Enzyme.select(data, "items[*][?true]")
+      assert result == [1, 2, 3, 4, 5]
+    end
+
+    test "filters with literal false (never matches)" do
+      data = %{"items" => [1, 2, 3, 4, 5]}
+
+      result = Enzyme.select(data, "items[*][?false]")
+      assert result == []
+    end
+
+    test "combines truthy check with logical AND operator" do
+      data = %{
+        "users" => [
+          %{"name" => "Alice", "active" => true, "premium" => true},
+          %{"name" => "Bob", "active" => true, "premium" => false},
+          %{"name" => "Charlie", "active" => false, "premium" => true},
+          %{"name" => "Dana", "active" => 1, "premium" => 1}
+        ]
+      }
+
+      result = Enzyme.select(data, "users[*][?@.active and @.premium].name")
+      assert result == ["Alice", "Dana"]
+    end
+
+    test "combines truthy check with logical OR operator" do
+      data = %{
+        "items" => [
+          %{"featured" => true, "onSale" => false},
+          %{"featured" => false, "onSale" => true},
+          %{"featured" => false, "onSale" => false},
+          %{"featured" => true, "onSale" => true}
+        ]
+      }
+
+      result = Enzyme.select(data, "items[*][?@.featured or @.onSale]")
+      assert length(result) == 3
+    end
+
+    test "combines truthy check with NOT operator" do
+      data = %{
+        "items" => [
+          %{"id" => 1, "deleted" => false},
+          %{"id" => 2, "deleted" => true},
+          %{"id" => 3, "deleted" => nil},
+          %{"id" => 4}
+        ]
+      }
+
+      result = Enzyme.select(data, "items[*][?not @.deleted].id")
+      assert result == [1, 3, 4]
+    end
+
+    test "truthy check on deeply nested fields" do
+      data = %{
+        "services" => [
+          %{"config" => %{"cache" => %{"redis" => %{"enabled" => true}}}},
+          %{"config" => %{"cache" => %{"redis" => %{"enabled" => false}}}},
+          %{"config" => %{"cache" => %{"memcached" => %{"enabled" => true}}}},
+          %{"config" => %{"cache" => %{"redis" => %{"enabled" => 1}}}}
+        ]
+      }
+
+      result =
+        Enzyme.select(data, "services[*][?@.config.cache.redis.enabled]")
+
+      assert length(result) == 2
+    end
+
+    test "truthiness with atom keys" do
+      data = %{
+        items: [
+          %{active: true, name: "Item 1"},
+          %{active: false, name: "Item 2"},
+          %{active: nil, name: "Item 3"},
+          %{name: "Item 4"}
+        ]
+      }
+
+      result = Enzyme.select(data, ":items[*][?@:active]:name")
+      assert result == ["Item 1"]
+    end
+
+    test "filters by truthy self reference" do
+      data = %{
+        "values" => [1, 0, nil, false, true, "string", "", []]
+      }
+
+      # In Elixir, only nil and false are falsy
+      result = Enzyme.select(data, "values[*][?@]")
+      assert result == [1, 0, true, "string", "", []]
+    end
+
+    test "complex real-world scenario: feature flags" do
+      features = %{
+        "features" => [
+          %{
+            "name" => "dark_mode",
+            "enabled" => true,
+            "rollout" => %{"active" => true, "percentage" => 100}
+          },
+          %{
+            "name" => "beta_api",
+            "enabled" => false,
+            "rollout" => %{"active" => false, "percentage" => 0}
+          },
+          %{
+            "name" => "new_ui",
+            "enabled" => true,
+            "rollout" => %{"active" => false, "percentage" => 0}
+          },
+          %{
+            "name" => "analytics",
+            "enabled" => true,
+            "rollout" => %{"active" => true, "percentage" => 50}
+          }
+        ]
+      }
+
+      # Enabled features with active rollout
+      active_features =
+        Enzyme.select(features, "features[*][?@.enabled and @.rollout.active].name")
+
+      assert active_features == ["dark_mode", "analytics"]
+    end
+
+    test "filtering API responses by presence of optional fields" do
+      api_response = %{
+        "results" => [
+          %{"id" => 1, "name" => "Alice", "email" => "alice@example.com"},
+          %{"id" => 2, "name" => "Bob"},
+          %{"id" => 3, "name" => "Charlie", "email" => "charlie@example.com"},
+          %{"id" => 4, "name" => "Dana", "email" => nil}
+        ]
+      }
+
+      # Select users who have provided an email
+      with_email = Enzyme.select(api_response, "results[*][?@.email].name")
+      assert with_email == ["Alice", "Charlie"]
+    end
+
+    test "truthy check combined with comparison operators" do
+      products = %{
+        "products" => [
+          %{"name" => "Product A", "featured" => true, "stock" => 10},
+          %{"name" => "Product B", "featured" => false, "stock" => 5},
+          %{"name" => "Product C", "featured" => true, "stock" => 0},
+          %{"name" => "Product D", "featured" => nil, "stock" => 20}
+        ]
+      }
+
+      # Featured products that are in stock
+      available_featured =
+        Enzyme.select(products, "products[*][?@.featured and @.stock > 0].name")
+
+      assert available_featured == ["Product A"]
+    end
+
+    test "transforms values filtered by truthiness" do
+      config = %{
+        "settings" => [
+          %{"key" => "timeout", "value" => 5000, "deprecated" => false},
+          %{"key" => "max_retries", "value" => 3, "deprecated" => true},
+          %{"key" => "buffer_size", "value" => 1024, "deprecated" => nil},
+          %{"key" => "log_level", "value" => "info", "deprecated" => true}
+        ]
+      }
+
+      # Remove deprecated settings by setting their values to nil
+      result = Enzyme.transform(config, "settings[*][?@.deprecated].value", nil)
+
+      settings = result["settings"]
+      assert Enum.at(settings, 0)["value"] == 5000
+      assert Enum.at(settings, 1)["value"] == nil
+      assert Enum.at(settings, 2)["value"] == 1024
+      assert Enum.at(settings, 3)["value"] == nil
+    end
+  end
 end

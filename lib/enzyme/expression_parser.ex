@@ -55,7 +55,16 @@ defmodule Enzyme.ExpressionParser do
         right: {:literal, 42}
       }
 
+      iex> Enzyme.ExpressionParser.parse("@.field")
+      %Enzyme.Expression{
+        left: {:field, ["field"]},
+        operator: :get,
+        right: nil
+      }
+
+
   """
+
   def parse(input), do: parse(input, [])
 
   @doc """
@@ -144,8 +153,8 @@ defmodule Enzyme.ExpressionParser do
         {%Expression{left: left, operator: operator, right: right}, final_rest}
 
       :none ->
-        # No operator found - return the operand as-is
-        {left, rest}
+        # No operator found - wrap in Expression with :get operator
+        {%Expression{left: left, operator: :get, right: nil}, rest}
     end
   end
 
@@ -165,36 +174,7 @@ defmodule Enzyme.ExpressionParser do
   defp parse_cmp_operator_internal(">=" <> rest), do: {:ok, :gte, rest}
   defp parse_cmp_operator_internal("<" <> rest), do: {:ok, :lt, rest}
   defp parse_cmp_operator_internal(">" <> rest), do: {:ok, :gt, rest}
-
-  defp parse_cmp_operator_internal("and" <> rest) do
-    case check_keyword_boundary_safe(rest) do
-      :ok -> {:ok, :and, rest}
-      :error -> :error
-    end
-  end
-
-  defp parse_cmp_operator_internal("or" <> rest) do
-    case check_keyword_boundary_safe(rest) do
-      :ok -> {:ok, :or, rest}
-      :error -> :error
-    end
-  end
-
   defp parse_cmp_operator_internal(_), do: :error
-
-  # Safe version that returns :ok or :error instead of raising
-  defp check_keyword_boundary_safe(rest) do
-    case rest do
-      "" ->
-        :ok
-
-      <<char, _::binary>> when char in ?a..?z or char in ?A..?Z or char in ?0..?9 or char == ?_ ->
-        :error
-
-      _ ->
-        :ok
-    end
-  end
 
   # Check that a keyword isn't part of a larger identifier
   defp check_keyword_boundary(rest, keyword) do
@@ -254,6 +234,14 @@ defmodule Enzyme.ExpressionParser do
     left_pred = compile(left)
     right_pred = compile(right)
     fn element -> left_pred.(element) or right_pred.(element) end
+  end
+
+  # Compile :get operator (truthiness check)
+  def compile(%Expression{left: operand, operator: :get, right: nil}) do
+    fn element ->
+      value = resolve_operand(operand, element)
+      truthy?(value)
+    end
   end
 
   # Compile comparison expression
@@ -709,4 +697,9 @@ defmodule Enzyme.ExpressionParser do
   defp naively_apply_operator(:str_neq, left, right), do: to_string(left) != to_string(right)
   defp naively_apply_operator(:and, left, right), do: left and right
   defp naively_apply_operator(:or, left, right), do: left or right
+
+  # Helper function for Elixir truthiness: nil and false are falsy
+  defp truthy?(nil), do: false
+  defp truthy?(false), do: false
+  defp truthy?(_), do: true
 end
