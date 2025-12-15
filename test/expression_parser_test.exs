@@ -5,6 +5,7 @@ defmodule Enzyme.ExpressionParserTest do
 
   alias Enzyme.Expression
   alias Enzyme.ExpressionParser
+  alias Enzyme.IsoRef
 
   @binary_operators %{
     "==" => [:boolean, :integer, :float, :string, :atom, :string_field, :atom_field],
@@ -56,8 +57,8 @@ defmodule Enzyme.ExpressionParserTest do
           expected = %Expression{
             left:
               case unquote(left_type) do
-                :string_field -> {:field, "field"}
-                :atom_field -> {:field, :field}
+                :string_field -> {:field, ["field"]}
+                :atom_field -> {:field, [:field]}
                 :string -> {:literal, "value"}
                 :atom -> {:literal, :value}
                 :boolean -> {:literal, true}
@@ -79,8 +80,8 @@ defmodule Enzyme.ExpressionParserTest do
               end,
             right:
               case unquote(right_type) do
-                :string_field -> {:field, "field"}
-                :atom_field -> {:field, :field}
+                :string_field -> {:field, ["field"]}
+                :atom_field -> {:field, [:field]}
                 :string -> {:literal, "value"}
                 :atom -> {:literal, :value}
                 :boolean -> {:literal, true}
@@ -122,8 +123,8 @@ defmodule Enzyme.ExpressionParserTest do
             end,
           right:
             case unquote(operand_type) do
-              :string_field -> {:field, "field"}
-              :atom_field -> {:field, :field}
+              :string_field -> {:field, ["field"]}
+              :atom_field -> {:field, [:field]}
               :string -> {:literal, "value"}
               :atom -> {:literal, :value}
               :boolean -> {:literal, true}
@@ -462,6 +463,129 @@ defmodule Enzyme.ExpressionParserTest do
       assert pred.(%{active: true, score: 70, role: "admin"}) == true
       assert pred.(%{active: true, score: 70, role: "user"}) == false
       assert pred.(%{active: false, score: 90, role: "admin"}) == false
+    end
+  end
+
+  describe "chained field access" do
+    test "parses chained string field access" do
+      expr = ExpressionParser.parse("@.user.name == 'Alice'")
+
+      assert %Expression{
+               left: {:field, ["user", "name"]},
+               operator: :eq,
+               right: {:literal, "Alice"}
+             } = expr
+    end
+
+    test "parses chained atom field access" do
+      expr = ExpressionParser.parse("@:user:profile:name == 'Bob'")
+
+      assert %Expression{
+               left: {:field, [:user, :profile, :name]},
+               operator: :eq,
+               right: {:literal, "Bob"}
+             } = expr
+    end
+
+    test "parses mixed string and atom field chain" do
+      expr = ExpressionParser.parse("@.data:user.name == 'Charlie'")
+
+      assert %Expression{
+               left: {:field, ["data", :user, "name"]},
+               operator: :eq,
+               right: {:literal, "Charlie"}
+             } = expr
+    end
+
+    test "parses chained field access with iso" do
+      expr = ExpressionParser.parse("@.user.age::integer == 30")
+
+      assert %Expression{
+               left: {:field_with_isos, ["user", "age"], [%IsoRef{name: :integer}]},
+               operator: :eq,
+               right: {:literal, 30}
+             } = expr
+    end
+
+    test "evaluates chained string field access" do
+      expr = ExpressionParser.parse("@.user.name == 'Alice'")
+      pred = ExpressionParser.compile(expr)
+
+      data = %{"user" => %{"name" => "Alice", "age" => 30}}
+      assert pred.(data) == true
+
+      data2 = %{"user" => %{"name" => "Bob", "age" => 25}}
+      assert pred.(data2) == false
+    end
+
+    test "evaluates chained atom field access" do
+      expr = ExpressionParser.parse("@:user:profile:name == 'Charlie'")
+      pred = ExpressionParser.compile(expr)
+
+      data = %{user: %{profile: %{name: "Charlie", verified: true}}}
+      assert pred.(data) == true
+
+      data2 = %{user: %{profile: %{name: "Dana", verified: false}}}
+      assert pred.(data2) == false
+    end
+
+    test "evaluates mixed chain" do
+      expr = ExpressionParser.parse("@.config:settings.debug == true")
+      pred = ExpressionParser.compile(expr)
+
+      data = %{"config" => %{settings: %{"debug" => true}}}
+      assert pred.(data) == true
+
+      data2 = %{"config" => %{settings: %{"debug" => false}}}
+      assert pred.(data2) == false
+    end
+
+    test "returns nil for missing intermediate field" do
+      expr = ExpressionParser.parse("@.user.profile.name == nil")
+      pred = ExpressionParser.compile(expr)
+
+      data = %{"user" => %{"age" => 30}}
+      assert pred.(data) == true
+    end
+
+    test "returns nil for non-map intermediate value" do
+      expr = ExpressionParser.parse("@.user.name.first == 'Alice'")
+      pred = ExpressionParser.compile(expr)
+
+      data = %{"user" => %{"name" => "Alice"}}
+      assert pred.(data) == false
+    end
+
+    test "evaluates deeply nested chain" do
+      expr = ExpressionParser.parse("@.a.b.c.d.e == 'value'")
+      pred = ExpressionParser.compile(expr)
+
+      data = %{
+        "a" => %{
+          "b" => %{
+            "c" => %{
+              "d" => %{
+                "e" => "value"
+              }
+            }
+          }
+        }
+      }
+
+      assert pred.(data) == true
+    end
+
+    test "parses chained field with multiple isos" do
+      expr = ExpressionParser.parse("@.data.encoded::base64::integer > 18")
+
+      assert %Expression{
+               left: {:field_with_isos, ["data", "encoded"], [
+                 %IsoRef{name: :base64},
+                 %IsoRef{name: :integer}
+               ]},
+               operator: :gt,
+               right: {:literal, 18}
+             } = expr
     end
   end
 end

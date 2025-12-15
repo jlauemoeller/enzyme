@@ -1153,4 +1153,565 @@ defmodule Enzyme.IntegrationTest do
       assert result == ["A"]
     end
   end
+
+  describe "Chained field references in filters" do
+    test "API response filtering by nested authentication status" do
+      # Realistic scenario: API returns user data with nested auth/session info
+      response = %{
+        "users" => [
+          %{
+            "id" => "user-001",
+            "name" => "Alice",
+            "auth" => %{
+              "session" => %{"active" => true, "expires_at" => "2024-12-20"},
+              "mfa" => %{"enabled" => true}
+            }
+          },
+          %{
+            "id" => "user-002",
+            "name" => "Bob",
+            "auth" => %{
+              "session" => %{"active" => false, "expires_at" => nil},
+              "mfa" => %{"enabled" => false}
+            }
+          },
+          %{
+            "id" => "user-003",
+            "name" => "Charlie",
+            "auth" => %{
+              "session" => %{"active" => true, "expires_at" => "2024-12-25"},
+              "mfa" => %{"enabled" => true}
+            }
+          }
+        ]
+      }
+
+      # Select users with active sessions and MFA enabled
+      result =
+        Enzyme.select(
+          response,
+          "users[*][?@.auth.session.active and @.auth.mfa.enabled].name"
+        )
+
+      assert result == ["Alice", "Charlie"]
+
+      # Select user IDs with inactive sessions
+      inactive = Enzyme.select(response, "users[*][?@.auth.session.active == false].id")
+      assert inactive == ["user-002"]
+    end
+
+    test "filtering IoT sensor data by nested thresholds" do
+      # Realistic scenario: IoT sensor network with nested config and readings
+      sensors = %{
+        "devices" => [
+          %{
+            "id" => "sensor-01",
+            "location" => "warehouse-A",
+            "readings" => %{
+              "temperature" => %{"value" => 22.5, "unit" => "celsius"},
+              "humidity" => %{"value" => 65, "unit" => "percent"}
+            },
+            "config" => %{
+              "thresholds" => %{"temperature" => %{"max" => 25}, "humidity" => %{"max" => 70}}
+            }
+          },
+          %{
+            "id" => "sensor-02",
+            "location" => "warehouse-B",
+            "readings" => %{
+              "temperature" => %{"value" => 28.0, "unit" => "celsius"},
+              "humidity" => %{"value" => 55, "unit" => "percent"}
+            },
+            "config" => %{
+              "thresholds" => %{"temperature" => %{"max" => 25}, "humidity" => %{"max" => 70}}
+            }
+          },
+          %{
+            "id" => "sensor-03",
+            "location" => "warehouse-C",
+            "readings" => %{
+              "temperature" => %{"value" => 24.0, "unit" => "celsius"},
+              "humidity" => %{"value" => 75, "unit" => "percent"}
+            },
+            "config" => %{
+              "thresholds" => %{"temperature" => %{"max" => 25}, "humidity" => %{"max" => 70}}
+            }
+          }
+        ]
+      }
+
+      # Find sensors where temperature exceeds configured threshold
+      overheated =
+        Enzyme.select(
+          sensors,
+          "devices[*][?@.readings.temperature.value > @.config.thresholds.temperature.max].location"
+        )
+
+      assert overheated == ["warehouse-B"]
+
+      # Find sensors where humidity exceeds configured threshold
+      humid =
+        Enzyme.select(
+          sensors,
+          "devices[*][?@.readings.humidity.value > @.config.thresholds.humidity.max].location"
+        )
+
+      assert humid == ["warehouse-C"]
+
+      # Combine both conditions
+      alerts =
+        Enzyme.select(
+          sensors,
+          "devices[*][?@.readings.temperature.value > @.config.thresholds.temperature.max or @.readings.humidity.value > @.config.thresholds.humidity.max].id"
+        )
+
+      assert alerts == ["sensor-02", "sensor-03"]
+    end
+
+    test "e-commerce product filtering with nested attributes" do
+      # Realistic scenario: Product catalog with nested specs and pricing
+      catalog = %{
+        "products" => [
+          %{
+            "sku" => "LAPTOP-001",
+            "name" => "Pro Laptop",
+            "specs" => %{
+              "processor" => %{"cores" => 8, "speed" => 3.2},
+              "memory" => %{"size_gb" => 16, "type" => "DDR4"}
+            },
+            "pricing" => %{
+              "list_price" => 1299,
+              "discount" => %{"active" => true, "percent" => 10}
+            }
+          },
+          %{
+            "sku" => "LAPTOP-002",
+            "name" => "Budget Laptop",
+            "specs" => %{
+              "processor" => %{"cores" => 4, "speed" => 2.4},
+              "memory" => %{"size_gb" => 8, "type" => "DDR4"}
+            },
+            "pricing" => %{
+              "list_price" => 599,
+              "discount" => %{"active" => false, "percent" => 0}
+            }
+          },
+          %{
+            "sku" => "LAPTOP-003",
+            "name" => "Gaming Laptop",
+            "specs" => %{
+              "processor" => %{"cores" => 12, "speed" => 4.5},
+              "memory" => %{"size_gb" => 32, "type" => "DDR5"}
+            },
+            "pricing" => %{
+              "list_price" => 2499,
+              "discount" => %{"active" => true, "percent" => 15}
+            }
+          }
+        ]
+      }
+
+      # High-performance laptops (8+ cores, 16GB+ RAM)
+      high_perf =
+        Enzyme.select(
+          catalog,
+          "products[*][?@.specs.processor.cores >= 8 and @.specs.memory.size_gb >= 16].name"
+        )
+
+      assert high_perf == ["Pro Laptop", "Gaming Laptop"]
+
+      # Products with active discounts
+      discounted =
+        Enzyme.select(catalog, "products[*][?@.pricing.discount.active == true].sku")
+
+      assert discounted == ["LAPTOP-001", "LAPTOP-003"]
+
+      # Budget options: < $1000 OR active discount >= 10%
+      budget =
+        Enzyme.select(
+          catalog,
+          "products[*][?@.pricing.list_price < 1000 or (@.pricing.discount.active == true and @.pricing.discount.percent >= 10)].sku"
+        )
+
+      assert budget == ["LAPTOP-001", "LAPTOP-002", "LAPTOP-003"]
+    end
+
+    test "filtering with atom keys through nested structures" do
+      # Realistic scenario: Elixir application config with nested atom keys
+      config = %{
+        services: [
+          %{
+            name: :auth_service,
+            deployment: %{
+              region: :us_east,
+              health: %{status: :healthy, uptime_seconds: 86_400}
+            },
+            metrics: %{requests_per_sec: 1500, error_rate: 0.001}
+          },
+          %{
+            name: :payment_service,
+            deployment: %{
+              region: :eu_west,
+              health: %{status: :degraded, uptime_seconds: 3600}
+            },
+            metrics: %{requests_per_sec: 500, error_rate: 0.05}
+          },
+          %{
+            name: :notification_service,
+            deployment: %{
+              region: :us_east,
+              health: %{status: :healthy, uptime_seconds: 172_800}
+            },
+            metrics: %{requests_per_sec: 2000, error_rate: 0.002}
+          }
+        ]
+      }
+
+      # Find healthy services in us_east
+      healthy_us =
+        Enzyme.select(
+          config,
+          ":services[*][?@:deployment:health:status == :healthy and @:deployment:region == :us_east]:name"
+        )
+
+      assert healthy_us == [:auth_service, :notification_service]
+
+      # Find services with high error rate (> 1%)
+      high_errors =
+        Enzyme.select(config, ":services[*][?@:metrics:error_rate > 0.01]:name")
+
+      assert high_errors == [:payment_service]
+
+      # Services with high load (> 1000 rps) and healthy
+      high_load_healthy =
+        Enzyme.select(
+          config,
+          ":services[*][?@:metrics:requests_per_sec > 1000 and @:deployment:health:status == :healthy]:name"
+        )
+
+      assert high_load_healthy == [:auth_service, :notification_service]
+    end
+
+    test "mixed string and atom key chaining in filters" do
+      # Realistic scenario: API response with mixed key types
+      data = %{
+        "response" => %{
+          metadata: %{request_id: "req-123", timestamp: "2024-03-15T10:00:00Z"},
+          data: [
+            %{
+              "attributes" => %{tags: %{priority: :high, category: "urgent"}},
+              id: "item-001"
+            },
+            %{
+              "attributes" => %{tags: %{priority: :low, category: "routine"}},
+              id: "item-002"
+            },
+            %{
+              "attributes" => %{tags: %{priority: :high, category: "scheduled"}},
+              id: "item-003"
+            }
+          ]
+        }
+      }
+
+      # High priority items
+      high_priority =
+        Enzyme.select(data, "response:data[*][?@.attributes:tags:priority == :high]:id")
+
+      assert high_priority == ["item-001", "item-003"]
+
+      # Urgent category items
+      urgent = Enzyme.select(data, "response:data[*][?@.attributes:tags:category == 'urgent']:id")
+      assert urgent == ["item-001"]
+    end
+
+    test "deeply nested filtering with complete data" do
+      # Realistic scenario: Social media API with complete nested fields
+      posts = %{
+        "feed" => [
+          %{
+            "id" => "post-001",
+            "author" => %{
+              "profile" => %{
+                "verified" => true,
+                "stats" => %{"followers" => 5000, "posts" => 150}
+              }
+            }
+          },
+          %{
+            "id" => "post-002",
+            "author" => %{
+              "profile" => %{"verified" => false, "stats" => %{"followers" => 800, "posts" => 50}}
+            }
+          },
+          %{
+            "id" => "post-003",
+            "author" => %{
+              "profile" => %{
+                "verified" => false,
+                "stats" => %{"followers" => 2000, "posts" => 300}
+              }
+            }
+          },
+          %{
+            "id" => "post-004",
+            "author" => %{
+              "profile" => %{
+                "verified" => true,
+                "stats" => %{"followers" => 50_000, "posts" => 1200}
+              }
+            }
+          },
+          %{
+            "id" => "post-005",
+            "author" => %{
+              "profile" => %{
+                "verified" => true,
+                "stats" => %{"followers" => 15_000, "posts" => 450}
+              }
+            }
+          }
+        ]
+      }
+
+      # Verified authors only
+      verified = Enzyme.select(posts, "feed[*][?@.author.profile.verified == true].id")
+      assert verified == ["post-001", "post-004", "post-005"]
+
+      # Influencers (> 10k followers)
+      influencers =
+        Enzyme.select(posts, "feed[*][?@.author.profile.stats.followers > 10000].id")
+
+      assert influencers == ["post-004", "post-005"]
+
+      # Small accounts (< 1000 followers)
+      small_accounts =
+        Enzyme.select(posts, "feed[*][?@.author.profile.stats.followers < 1000].id")
+
+      assert small_accounts == ["post-002"]
+
+      # Verified influencers with high engagement (verified + > 10k followers + > 400 posts)
+      engaged_influencers =
+        Enzyme.select(
+          posts,
+          "feed[*][?@.author.profile.verified == true and @.author.profile.stats.followers > 10000 and @.author.profile.stats.posts > 400].id"
+        )
+
+      assert engaged_influencers == ["post-004", "post-005"]
+
+      # Not verified
+      not_verified = Enzyme.select(posts, "feed[*][?@.author.profile.verified == false].id")
+      assert not_verified == ["post-002", "post-003"]
+    end
+
+    test "transforming values selected by chained field filters" do
+      # Realistic scenario: Update nested config values
+      app_config = %{
+        "environments" => [
+          %{
+            "name" => "production",
+            "services" => %{
+              "database" => %{"connection" => %{"pool_size" => 10, "timeout" => 5000}}
+            }
+          },
+          %{
+            "name" => "staging",
+            "services" => %{
+              "database" => %{"connection" => %{"pool_size" => 5, "timeout" => 3000}}
+            }
+          },
+          %{
+            "name" => "development",
+            "services" => %{
+              "database" => %{"connection" => %{"pool_size" => 2, "timeout" => 1000}}
+            }
+          }
+        ]
+      }
+
+      # Double the pool size for environments with pool_size < 10
+      result =
+        Enzyme.transform(
+          app_config,
+          "environments[*][?@.services.database.connection.pool_size < 10].services.database.connection.pool_size",
+          &(&1 * 2)
+        )
+
+      prod_pool =
+        get_in(result, [
+          "environments",
+          Access.at(0),
+          "services",
+          "database",
+          "connection",
+          "pool_size"
+        ])
+
+      staging_pool =
+        get_in(result, [
+          "environments",
+          Access.at(1),
+          "services",
+          "database",
+          "connection",
+          "pool_size"
+        ])
+
+      dev_pool =
+        get_in(result, [
+          "environments",
+          Access.at(2),
+          "services",
+          "database",
+          "connection",
+          "pool_size"
+        ])
+
+      # unchanged
+      assert prod_pool == 10
+      # 5 * 2
+      assert staging_pool == 10
+      # 2 * 2
+      assert dev_pool == 4
+    end
+
+    test "chained fields with iso conversions in filters" do
+      # Realistic scenario: Financial data with string amounts
+      transactions = %{
+        "accounts" => [
+          %{
+            "id" => "acc-001",
+            "holder" => %{"name" => "Alice", "credit_score" => %{"value" => "750"}},
+            "balance" => %{"amount" => "15000", "currency" => "USD"}
+          },
+          %{
+            "id" => "acc-002",
+            "holder" => %{"name" => "Bob", "credit_score" => %{"value" => "680"}},
+            "balance" => %{"amount" => "5000", "currency" => "USD"}
+          },
+          %{
+            "id" => "acc-003",
+            "holder" => %{"name" => "Charlie", "credit_score" => %{"value" => "800"}},
+            "balance" => %{"amount" => "25000", "currency" => "USD"}
+          }
+        ]
+      }
+
+      # High value accounts (balance > 10k) with good credit (score > 700)
+      premium =
+        Enzyme.select(
+          transactions,
+          "accounts[*][?@.balance.amount::integer > 10000 and @.holder.credit_score.value::integer > 700].holder.name",
+          []
+        )
+
+      assert premium == ["Alice", "Charlie"]
+
+      # Accounts eligible for upgrade (balance > 10k OR credit score > 750)
+      eligible =
+        Enzyme.select(
+          transactions,
+          "accounts[*][?@.balance.amount::integer > 10000 or @.holder.credit_score.value::integer > 750].id",
+          []
+        )
+
+      assert eligible == ["acc-001", "acc-003"]
+    end
+
+    test "complex real-world scenario: microservices health monitoring" do
+      # Realistic scenario: Kubernetes-style service mesh health data
+      cluster = %{
+        "namespaces" => [
+          %{
+            "name" => "production",
+            "services" => [
+              %{
+                "name" => "api-gateway",
+                "replicas" => %{
+                  "desired" => 3,
+                  "ready" => 3,
+                  "status" => %{
+                    "conditions" => %{"healthy" => true, "last_check" => "2024-03-15T10:00:00Z"}
+                  }
+                },
+                "metrics" => %{
+                  "cpu" => %{"usage_percent" => 45},
+                  "memory" => %{"usage_mb" => 512}
+                }
+              },
+              %{
+                "name" => "user-service",
+                "replicas" => %{
+                  "desired" => 5,
+                  "ready" => 3,
+                  "status" => %{
+                    "conditions" => %{"healthy" => false, "last_check" => "2024-03-15T10:00:00Z"}
+                  }
+                },
+                "metrics" => %{
+                  "cpu" => %{"usage_percent" => 85},
+                  "memory" => %{"usage_mb" => 1024}
+                }
+              }
+            ]
+          },
+          %{
+            "name" => "staging",
+            "services" => [
+              %{
+                "name" => "api-gateway",
+                "replicas" => %{
+                  "desired" => 2,
+                  "ready" => 2,
+                  "status" => %{
+                    "conditions" => %{"healthy" => true, "last_check" => "2024-03-15T10:00:00Z"}
+                  }
+                },
+                "metrics" => %{
+                  "cpu" => %{"usage_percent" => 30},
+                  "memory" => %{"usage_mb" => 256}
+                }
+              }
+            ]
+          }
+        ]
+      }
+
+      # Find unhealthy services in production
+      unhealthy_prod =
+        Enzyme.select(
+          cluster,
+          "namespaces[*][?@.name == 'production'].services[*][?@.replicas.status.conditions.healthy == false].name"
+        )
+
+      assert unhealthy_prod == ["user-service"]
+
+      # Find services with high CPU usage (> 80%) anywhere
+      high_cpu =
+        Enzyme.select(
+          cluster,
+          "namespaces[*].services[*][?@.metrics.cpu.usage_percent > 80].name"
+        )
+
+      assert high_cpu == ["user-service"]
+
+      # Find services where ready replicas don't match desired
+      scaling_issues =
+        Enzyme.select(
+          cluster,
+          "namespaces[*].services[*][?@.replicas.ready != @.replicas.desired].name"
+        )
+
+      assert scaling_issues == ["user-service"]
+
+      # Critical services: unhealthy OR high CPU OR scaling issues in production
+      critical =
+        Enzyme.select(
+          cluster,
+          "namespaces[*][?@.name == 'production'].services[*][?@.replicas.status.conditions.healthy == false or @.metrics.cpu.usage_percent > 80 or @.replicas.ready != @.replicas.desired].name"
+        )
+
+      assert critical == ["user-service"]
+    end
+  end
 end

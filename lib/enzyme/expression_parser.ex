@@ -10,7 +10,8 @@ defmodule Enzyme.ExpressionParser do
   # - primary := '(' expression ')' | comparison
   # - comparison := operand cmp_operator operand
   # - operand := ('@' | field | literal) iso_chain?
-  # - field := '@.' identifier | '@:' identifier
+  # - field := '@.' field_chain | '@:' field_chain
+  # - field_chain := identifier ('.' identifier | ':' identifier)*
   # - iso_chain := '::' identifier iso_chain?
   # - literal := string | number | boolean | atom_literal
   # - cmp_operator := '==' | '!=' | '<' | '<=' | '>' | '>=' | '~~' | '!~'
@@ -42,7 +43,7 @@ defmodule Enzyme.ExpressionParser do
 
       iex> Enzyme.ExpressionParser.parse("@.field == 'value'")
       %Enzyme.Expression{
-        left: {:field, "field"},
+        left: {:field, ["field"]},
         operator: :eq,
         right: {:literal, "value"}
       }
@@ -407,11 +408,11 @@ defmodule Enzyme.ExpressionParser do
 
   # Parse an operand: @, @.field, @:field, or literal (with optional ::iso chain)
   defp parse_operand("@." <> rest, opts) do
-    # String field access with @ prefix
-    {field_name, remaining} = parse_identifier(rest)
-    # Check for iso chain after field
+    # String field access with @ prefix (supports chaining with . and :)
+    {fields, remaining} = parse_field_chain(rest, :string)
+    # Check for iso chain after field(s)
     {isos, remaining} = parse_iso_chain(remaining, opts)
-    {wrap_with_isos({:field, field_name}, isos), remaining}
+    {wrap_with_isos({:field, fields}, isos), remaining}
   end
 
   defp parse_operand("@:" <> rest, opts) do
@@ -422,11 +423,11 @@ defmodule Enzyme.ExpressionParser do
         {wrap_with_isos({:self}, isos), remaining}
 
       _ ->
-        # Atom field access with @ prefix
-        {field_name, remaining} = parse_identifier(rest)
-        # Check for iso chain after field
+        # Atom field access with @ prefix (supports chaining with . and :)
+        {fields, remaining} = parse_field_chain(rest, :atom)
+        # Check for iso chain after field(s)
         {isos, remaining} = parse_iso_chain(remaining, opts)
-        {wrap_with_isos({:field, String.to_existing_atom(field_name)}, isos), remaining}
+        {wrap_with_isos({:field, fields}, isos), remaining}
     end
   end
 
@@ -513,7 +514,7 @@ defmodule Enzyme.ExpressionParser do
 
   # Wrap operand with isos if any
   defp wrap_with_isos(operand, []), do: operand
-  defp wrap_with_isos({:field, name}, isos), do: {:field_with_isos, name, isos}
+  defp wrap_with_isos({:field, names}, isos), do: {:field_with_isos, names, isos}
   defp wrap_with_isos({:self}, isos), do: {:self_with_isos, isos}
   defp wrap_with_isos({:literal, value}, isos), do: {:literal_with_isos, value, isos}
 
@@ -591,6 +592,45 @@ defmodule Enzyme.ExpressionParser do
 
   defp consume_identifier(rest, acc), do: {acc |> Enum.reverse() |> IO.iodata_to_binary(), rest}
 
+  # Parse a chain of field accesses starting with given type (:string or :atom)
+  # Returns a list of field names (strings for string keys, atoms for atom keys)
+  # Examples:
+  #   parse_field_chain("name", :string) → {["name"], ""}
+  #   parse_field_chain("user.name", :string) → {["user", "name"], ""}
+  #   parse_field_chain("data:user.name", :string) → {["data", :user, "name"], ""}
+  defp parse_field_chain(input, initial_type) do
+    parse_field_chain_step(input, initial_type, [])
+  end
+
+  defp parse_field_chain_step(input, current_type, acc) do
+    {field_name, remaining} = parse_identifier(input)
+
+    # Convert to appropriate type and add to accumulator
+    field =
+      case current_type do
+        :string -> field_name
+        :atom -> String.to_existing_atom(field_name)
+      end
+
+    new_acc = [field | acc]
+    trimmed = String.trim_leading(remaining)
+
+    # Check for more chaining
+    cond do
+      String.starts_with?(trimmed, ".") ->
+        # Continue with string field
+        parse_field_chain_step(String.trim_leading(trimmed, "."), :string, new_acc)
+
+      String.starts_with?(trimmed, ":") and not String.starts_with?(trimmed, "::") ->
+        # Continue with atom field (but not iso chain ::)
+        parse_field_chain_step(String.trim_leading(trimmed, ":"), :atom, new_acc)
+
+      true ->
+        # End of chain - reverse accumulator to restore order
+        {Enum.reverse(new_acc), remaining}
+    end
+  end
+
   # Resolve an operand value against an element
   defp resolve_operand({:self}, element), do: element
 
@@ -598,24 +638,30 @@ defmodule Enzyme.ExpressionParser do
     apply_isos(element, isos)
   end
 
-  defp resolve_operand({:field, name}, element) when is_map(element) do
-    get_field(element, name)
+  defp resolve_operand({:field, names}, element) when is_list(names) do
+    resolve_field_chain(names, element)
   end
 
-  defp resolve_operand({:field, _name}, _element), do: nil
-
-  defp resolve_operand({:field_with_isos, name, isos}, element) when is_map(element) do
-    value = get_field(element, name)
+  defp resolve_operand({:field_with_isos, names, isos}, element) when is_list(names) do
+    value = resolve_field_chain(names, element)
     apply_isos(value, isos)
   end
-
-  defp resolve_operand({:field_with_isos, _name, _isos}, _element), do: nil
 
   defp resolve_operand({:literal, value}, _element), do: value
 
   defp resolve_operand({:literal_with_isos, value, isos}, _element) do
     apply_isos(value, isos)
   end
+
+  # Recursively resolve a chain of field accesses
+  defp resolve_field_chain([], value), do: value
+
+  defp resolve_field_chain([name | rest], element) when is_map(element) do
+    value = get_field(element, name)
+    resolve_field_chain(rest, value)
+  end
+
+  defp resolve_field_chain(_names, _element), do: nil
 
   # Get a field from a map
   defp get_field(map, name) when is_map(map) and (is_binary(name) or is_atom(name)) do

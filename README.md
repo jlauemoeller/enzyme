@@ -448,6 +448,72 @@ Enzyme.select(data, "scores[*][?@ == 95]")
 Enzyme.select(data, "users[*][?@.active == true].name")
 ```
 
+#### Chained Field References
+
+Filter expressions support chained field references to navigate through nested structures. Use `.` to chain string keys and `:` to chain atom keys:
+
+```elixir
+data = %{
+  "users" => [
+    %{"name" => "Alice", "profile" => %{"verified" => true, "level" => 5}},
+    %{"name" => "Bob", "profile" => %{"verified" => false, "level" => 3}},
+    %{"name" => "Charlie", "profile" => %{"verified" => true, "level" => 8}}
+  ]
+}
+
+# Filter by nested field
+Enzyme.select(data, "users[*][?@.profile.verified == true].name")
+# => ["Alice", "Charlie"]
+
+# Compare nested numeric values
+Enzyme.select(data, "users[*][?@.profile.level > 4].name")
+# => ["Alice", "Charlie"]
+
+# Combine with logical operators
+Enzyme.select(data, "users[*][?@.profile.verified == true and @.profile.level >= 5].name")
+# => ["Alice", "Charlie"]
+```
+
+You can also chain atom keys and mix string and atom keys:
+
+```elixir
+# Data with atom keys
+data = %{
+  users: [
+    %{name: "Alice", settings: %{theme: "dark", notifications: true}},
+    %{name: "Bob", settings: %{theme: "light", notifications: false}}
+  ]
+}
+
+# Chain atom keys
+Enzyme.select(data, ":users[*][?@:settings:theme == 'dark']:name")
+# => ["Alice"]
+
+# Mixed string and atom keys
+data = %{
+  "config" => %{users: [%{name: "Alice", active: true}]}
+}
+
+Enzyme.select(data, "config:users[*][?@:active == true]:name")
+# => ["Alice"]
+```
+
+Chained field references provide null-safe navigation - if any intermediate field is missing or not a map, the expression returns `nil` for that element:
+
+```elixir
+data = %{
+  "items" => [
+    %{"user" => %{"profile" => %{"verified" => true}}},
+    %{"user" => %{"name" => "Bob"}},  # no profile
+    %{"name" => "Charlie"}  # no user
+  ]
+}
+
+# Only matches the first item
+Enzyme.select(data, "items[*][?@.user.profile.verified == true]")
+# => [%{"user" => %{"profile" => %{"verified" => true}}}]
+```
+
 #### Isos in Filters
 
 You can use the syntax `::iso` in filter expressions to transform values before comparison:
@@ -884,6 +950,9 @@ Enzyme.transform(data, "departments[*].employees[*].title", &String.upcase/1)
 | `[:atom]`       | Atom key in brackets                  | `data[:key]`                                |
 | `[:a,:b]`       | Multiple atom keys                    | `data[:foo,:bar]`                           |
 | `[?expr]`       | Filter expression                     | `users[*][?@.active == true]`               |
+| `[?@.a.b]`      | Filter with chained string fields     | `[?@.user.profile.verified == true]`        |
+| `[?@:a:b]`      | Filter with chained atom fields       | `[?@:config:database:host == 'localhost']`  |
+| `[?@.a:b.c]`    | Filter with mixed field chain         | `[?@.data:user.name == 'Alice']`            |
 | `[?a and b]`    | Filter with logical AND               | `[?@.active == true and @.role == 'admin']` |
 | `[?a or b]`     | Filter with logical OR                | `[?@.role == 'admin' or @.role == 'user']`  |
 | `[?not expr]`   | Filter with logical NOT               | `[?not @.deleted == true]`                  |

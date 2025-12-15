@@ -276,6 +276,86 @@ defmodule Enzyme.ReadmeTest do
     end
   end
 
+  describe "README - Chained Field References" do
+    test "filters by nested string field" do
+      data = %{
+        "users" => [
+          %{"name" => "Alice", "profile" => %{"verified" => true, "level" => 5}},
+          %{"name" => "Bob", "profile" => %{"verified" => false, "level" => 3}},
+          %{"name" => "Charlie", "profile" => %{"verified" => true, "level" => 8}}
+        ]
+      }
+
+      result = Enzyme.select(data, "users[*][?@.profile.verified == true].name")
+      assert result == ["Alice", "Charlie"]
+    end
+
+    test "compares nested numeric values" do
+      data = %{
+        "users" => [
+          %{"name" => "Alice", "profile" => %{"verified" => true, "level" => 5}},
+          %{"name" => "Bob", "profile" => %{"verified" => false, "level" => 3}},
+          %{"name" => "Charlie", "profile" => %{"verified" => true, "level" => 8}}
+        ]
+      }
+
+      result = Enzyme.select(data, "users[*][?@.profile.level > 4].name")
+      assert result == ["Alice", "Charlie"]
+    end
+
+    test "combines chained fields with logical operators" do
+      data = %{
+        "users" => [
+          %{"name" => "Alice", "profile" => %{"verified" => true, "level" => 5}},
+          %{"name" => "Bob", "profile" => %{"verified" => false, "level" => 3}},
+          %{"name" => "Charlie", "profile" => %{"verified" => true, "level" => 8}}
+        ]
+      }
+
+      result =
+        Enzyme.select(
+          data,
+          "users[*][?@.profile.verified == true and @.profile.level >= 5].name"
+        )
+
+      assert result == ["Alice", "Charlie"]
+    end
+
+    test "chains atom keys" do
+      data = %{
+        users: [
+          %{name: "Alice", settings: %{theme: "dark", notifications: true}},
+          %{name: "Bob", settings: %{theme: "light", notifications: false}}
+        ]
+      }
+
+      result = Enzyme.select(data, ":users[*][?@:settings:theme == 'dark']:name")
+      assert result == ["Alice"]
+    end
+
+    test "mixes string and atom keys" do
+      data = %{
+        "config" => %{users: [%{name: "Alice", active: true}]}
+      }
+
+      result = Enzyme.select(data, "config:users[*][?@:active == true]:name")
+      assert result == ["Alice"]
+    end
+
+    test "provides null-safe navigation for missing fields" do
+      data = %{
+        "items" => [
+          %{"user" => %{"profile" => %{"verified" => true}}},
+          %{"user" => %{"name" => "Bob"}},
+          %{"name" => "Charlie"}
+        ]
+      }
+
+      result = Enzyme.select(data, "items[*][?@.user.profile.verified == true]")
+      assert result == [%{"user" => %{"profile" => %{"verified" => true}}}]
+    end
+  end
+
   describe "README - Isos in Filters" do
     test "filters by converted integer value (left side)" do
       data = %{

@@ -7,14 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 0.4.0 - 2025-12-11
 
-### Changed
+### Breaking
 
 - BREAKING: The [*] selector (All lens) now flattens nested lists in its output. For example, selecting "matrix[\*][*].v" from a structure with a matrix of values will return a flat list of all "v" values instead of a list of lists. This change improves usability and consistency with common expectations for "all" selectors.
 - BREAKING: Filter expressions now require explicit `@.` prefixes for field access on the current item. For example, use `[?@.active == true]` instead of `[?active == true]`. This change enhances clarity and avoids ambiguity in filter expressions.
+
+### Changed
+
 - Updated documentation and examples to reflect changes in filter expression syntax and [*] selector behavior.
 - Updated tracing output format for improved clarity and consistency.
 - Refactored tracing implementation to use a dedicated `Enzyme.Tracing` module for better organization and maintainability.
 - Enhanced tracing functionality to support custom indentation levels and output devices.
+
+### Added
+
+- Support for chained filter expressions, allowing more complex filtering logic in selections.
 
   0.3.1 - 2025-12-10
 
