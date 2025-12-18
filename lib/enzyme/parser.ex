@@ -22,10 +22,6 @@ defmodule Enzyme.Parser do
   # | `[:atom]`       | Atom key                         | `[:ok]`              |
   # | `[:a,:b,...]`   | Multiple atom keys               | `[:name,:age]`       |
   # | `[?expr]`       | Filter expression                | `[?active == true]`  |
-  # | `:{:tag, ...}`  | Prism (extract all after tag)    | `:{:ok, ...}`        |
-  # | `:{:tag, a, b}` | Prism (extract named positions)  | `:{:ok, v}`          |
-  # | `:{:tag, _, b}` | Prism (ignore positions with _)  | `:{:rect, _, h}`     |
-  # | `:{:tag, _, _}` | Prism (filter only)              | `:{:ok, _}`          |
 
   # ### Formal Grammar (EBNF)
 
@@ -57,12 +53,6 @@ defmodule Enzyme.Parser do
   # number      = [ "-" ] , digit , { digit } ;
   # boolean     = "true" | "false" ;
   # operator    = "==" | "!=" | "~~" | "!~" ;
-
-  # prism       = ":{" , ":" , atom , prism_tail , "}" ;
-  # prism_tail  = ε                                      (* tag only, same as ... *)
-  #             | "," , "..."                            (* rest pattern *)
-  #             | "," , prism_elem , { "," , prism_elem } ;
-  # prism_elem  = "_" | identifier ;                     (* _ ignores, name extracts *)
 
   # atom_list   = ":" , atom , { "," , ":" , atom } ;
   # atom        = identifier ;
@@ -104,26 +94,12 @@ defmodule Enzyme.Parser do
   # users[?active == true][?role == 'admin'].name  # Stacked filters
   # ```
 
-  # ### Prism Examples
-
-  # Prisms match tagged tuples (sum types) and extract values:
-
-  # ```
-  # results[*]:{:ok, v}              # Extract values from all {:ok, v} tuples
-  # results[*]:{:error, r}           # Extract reasons from {:error, r} tuples
-  # data:{:ok, v}.user.name          # Extract from {:ok, _}, then traverse
-  # shapes[*]:{:circle, r}           # Extract radius from circle tuples
-  # shapes[*]:{:rectangle, w, h}     # Extract {w, h} from rectangles
-  # shapes[*]:{:rectangle, _, h}     # Extract only height (ignore width)
-  # shapes[*]:{:point, ...}          # Extract all elements after :point tag
-  # results[*]:{:ok, _}              # Filter to only :ok tuples (no extraction)
-  # ```
-
   alias Enzyme.All
+  alias Enzyme.Expression
+  alias Enzyme.ExpressionParser
   alias Enzyme.Filter
   alias Enzyme.IsoRef
   alias Enzyme.One
-  alias Enzyme.Prism
   alias Enzyme.Slice
 
   @doc """
@@ -195,12 +171,6 @@ defmodule Enzyme.Parser do
     parse_more_components(rest, add_component(acc, component), opts)
   end
 
-  # Handle prism directly after identifier (no dot needed)
-  defp parse_more_components(":{" <> _ = rest, acc, opts) do
-    {component, rest} = parse_prism_expression(rest)
-    parse_more_components(rest, add_component(acc, component), opts)
-  end
-
   # Handle iso directly after identifier (no dot needed)
   defp parse_more_components("::" <> rest, acc, opts) do
     {iso, rest} = parse_iso_reference(rest, opts)
@@ -228,13 +198,9 @@ defmodule Enzyme.Parser do
     [component | acc]
   end
 
-  # Parse a single component: "[...]" | ":{...}" | "::iso" | ":atom" | key
+  # Parse a single component: "[...]" | "::iso" | ":atom" | key
   defp parse_component("[" <> _ = input, opts) do
     parse_bracket_expression(input, opts)
-  end
-
-  defp parse_component(":{" <> _ = input, _opts) do
-    parse_prism_expression(input)
   end
 
   defp parse_component("::" <> rest, opts) do
@@ -306,19 +272,9 @@ defmodule Enzyme.Parser do
           raise "Expected filter expression after ? in bracket"
         end
 
-        # Parse the expression (may contain isos)
-        expression = Enzyme.ExpressionParser.parse(trimmed, opts)
-
-        # Check if expression contains any isos (resolved or not)
-        # If so, store expression for potential runtime override
-        # Otherwise, compile to predicate immediately
-        filter =
-          if expression_has_isos?(expression) do
-            %Filter{predicate: nil, expression: expression}
-          else
-            predicate = Enzyme.ExpressionParser.compile(expression)
-            %Filter{predicate: predicate, expression: expression}
-          end
+        # Parse the expression (may contain isos and/or function calls)
+        expression = ExpressionParser.parse(trimmed, opts)
+        filter = build_filter(expression)
 
         {filter, remaining}
 
@@ -327,9 +283,29 @@ defmodule Enzyme.Parser do
     end
   end
 
+  defp build_filter(%Expression{} = expression) do
+    # Check if expression contains any isos or function calls
+    # If so, store expression for runtime resolution
+    # Otherwise, compile to predicate immediately
+    if expression_has_isos?(expression) or expression_has_function_calls?(expression) do
+      %Filter{predicate: nil, expression: expression}
+    else
+      # Compile immediately - predicate_fn expects (element, opts)
+      # Wrap to pass empty opts for simple filters
+      predicate_fn = ExpressionParser.compile(expression)
+      predicate = fn element -> predicate_fn.(element, []) end
+      %Filter{predicate: predicate, expression: expression}
+    end
+  end
+
   # Check if expression contains any isos
   defp expression_has_isos?(expression) do
-    Enzyme.ExpressionParser.has_isos?(expression)
+    ExpressionParser.has_isos?(expression)
+  end
+
+  # Check if expression contains any function calls
+  defp expression_has_function_calls?(expression) do
+    ExpressionParser.has_function_calls?(expression)
   end
 
   # Parse comma-separated list of atoms: [:a] or [:a,:b]
@@ -618,247 +594,4 @@ defmodule Enzyme.Parser do
       consume_until(rest, delimiters, [char | acc])
     end
   end
-
-  # Parse prism expression: :{:tag, pattern...}
-  # Examples:
-  #   :{:ok, v}           -> Prism matching {:ok, _}, extracting v
-  #   :{:rectangle, w, h} -> Prism matching {:rectangle, _, _}, extracting {w, h}
-  #   :{:rectangle, _, h} -> Prism matching {:rectangle, _, _}, extracting h only
-  #   :{:ok, ...}         -> Prism matching {:ok, ...}, extracting all after tag
-  #   :{:ok, _}           -> Prism matching {:ok, _}, filter only (returns whole tuple)
-  defp parse_prism_expression(":{" <> rest) do
-    # Expect :tag first
-    case rest do
-      ":" <> tag_rest ->
-        {tag_name, after_tag} = consume_until(tag_rest, ",}")
-
-        tag =
-          case String.trim(tag_name) do
-            "" -> raise "Expected atom name after : in prism expression"
-            name -> String.to_atom(name)
-          end
-
-        # Check what comes after the tag
-        case String.trim_leading(after_tag) do
-          "}" <> remaining ->
-            # Just a tag, no pattern - treat as rest pattern
-            prism = %Prism{tag: tag, pattern: nil, rest: true}
-            parse_prism_retag(prism, remaining)
-
-          "," <> pattern_rest ->
-            parse_prism_pattern(tag, String.trim_leading(pattern_rest))
-
-          other ->
-            raise "Expected , or } after tag in prism expression, got: #{inspect(other)}"
-        end
-
-      _ ->
-        raise "Expected :atom after :{ in prism expression"
-    end
-  end
-
-  # Parse the pattern part of a prism: name | _ | ...
-  defp parse_prism_pattern(tag, "..." <> rest) do
-    # Rest pattern - consume closing }
-    case String.trim_leading(rest) do
-      "}" <> remaining ->
-        prism = %Prism{tag: tag, pattern: nil, rest: true}
-        parse_prism_retag(prism, remaining)
-
-      _ ->
-        raise "Expected } after ... in prism expression"
-    end
-  end
-
-  defp parse_prism_pattern(tag, input) do
-    {elements, rest} = parse_prism_elements(input, [])
-
-    case rest do
-      "}" <> remaining ->
-        pattern =
-          Enum.map(elements, fn
-            "_" -> nil
-            name -> String.to_atom(name)
-          end)
-
-        prism = %Prism{tag: tag, pattern: pattern, rest: false}
-        parse_prism_retag(prism, remaining)
-
-      _ ->
-        raise "Expected } at end of prism expression"
-    end
-  end
-
-  defp parse_prism_elements(input, acc) do
-    {element, rest} = consume_until(input, ",}")
-    trimmed = String.trim(element)
-
-    if trimmed == "" do
-      raise "Expected element name or _ in prism pattern"
-    end
-
-    case rest do
-      "," <> more ->
-        parse_prism_elements(String.trim_leading(more), [trimmed | acc])
-
-      _ ->
-        {Enum.reverse([trimmed | acc]), rest}
-    end
-  end
-
-  # Parse optional prism retagging: -> :tag or -> {:tag, assembly}
-  defp parse_prism_retag(prism, input) do
-    case String.trim_leading(input) do
-      "->" <> rest ->
-        parse_prism_output(prism, rest)
-
-      other ->
-        # No retagging - return prism as-is
-        {prism, other}
-    end
-  end
-
-  # Parse prism output: :tag (shorthand) or {:tag, assembly}
-  # First trim leading whitespace, then check for : or {
-  defp parse_prism_output(prism, input) do
-    case String.trim_leading(input) do
-      ":" <> rest ->
-        # Check if it's shorthand (:atom) or full form ({:atom, ...})
-        case rest do
-          "{" <> full_rest ->
-            # Full form: {:tag, assembly}
-            parse_prism_output_assembly(prism, "{:" <> full_rest)
-
-          _shorthand_rest ->
-            # Shorthand: just :tag
-            parse_prism_output_shorthand(prism, rest)
-        end
-
-      other ->
-        raise "Expected : after -> in prism retagging, got: #{inspect(String.slice(other, 0, 10))}"
-    end
-  end
-
-  # Parse shorthand retagging: -> :tag
-  defp parse_prism_output_shorthand(prism, input) do
-    {tag_name, remaining} = consume_identifier(input, [])
-
-    if tag_name == "" do
-      raise "Expected atom name after : in prism retagging"
-    end
-
-    output_tag = String.to_atom(tag_name)
-    {%{prism | output_tag: output_tag, output_pattern: nil}, remaining}
-  end
-
-  # Parse explicit assembly: -> :{:tag, x, z}
-  defp parse_prism_output_assembly(prism, "{:" <> rest) do
-    # After "{:" we should have the tag name
-    {tag_name, after_tag} = consume_until(rest, ",}")
-
-    output_tag =
-      case String.trim(tag_name) do
-        "" -> raise "Expected atom name after :{ in prism output"
-        # Strip leading : if present
-        ":" <> name -> String.to_atom(name)
-        name -> String.to_atom(name)
-      end
-
-    case String.trim_leading(after_tag) do
-      "}" <> remaining ->
-        # Empty assembly - treat as rest pattern
-        {%{prism | output_tag: output_tag, output_pattern: :rest}, remaining}
-
-      "," <> pattern_rest ->
-        trimmed = String.trim_leading(pattern_rest)
-
-        # Check for rest pattern
-        {output_pattern, remaining} =
-          if String.starts_with?(trimmed, "...") do
-            parse_prism_rest(trimmed)
-          else
-            parse_prism_assembly_pattern(prism, trimmed)
-          end
-
-        {%{prism | output_tag: output_tag, output_pattern: output_pattern}, remaining}
-
-      _ ->
-        raise "Expected , or } after tag in prism output assembly"
-    end
-  end
-
-  defp parse_prism_rest(trimmed) do
-    case String.trim_leading(String.slice(trimmed, 3..-1//1)) do
-      "}" <> remaining ->
-        {:rest, remaining}
-
-      _ ->
-        raise "Expected } after ... in prism output assembly"
-    end
-  end
-
-  def parse_prism_assembly_pattern(prism, trimmed) do
-    # Parse explicit assembly pattern
-    {elements, rest} = parse_prism_output_elements(trimmed, [])
-
-    case rest do
-      "}" <> remaining ->
-        # Validate that all names exist in input pattern
-        output_pattern = Enum.map(elements, &String.to_atom/1)
-        validate_output_pattern(prism, output_pattern)
-        {output_pattern, remaining}
-
-      _ ->
-        raise "Expected } at end of prism output assembly"
-    end
-  end
-
-  # Parse output assembly elements
-  defp parse_prism_output_elements(input, acc) do
-    {element, rest} = consume_until(input, ",}")
-    trimmed = String.trim(element)
-
-    if trimmed == "" do
-      raise "Expected element name in prism output assembly"
-    end
-
-    case rest do
-      "," <> more ->
-        parse_prism_output_elements(String.trim_leading(more), [trimmed | acc])
-
-      _ ->
-        {Enum.reverse([trimmed | acc]), rest}
-    end
-  end
-
-  # Validate that output pattern names exist in input pattern
-  defp validate_output_pattern(%Prism{pattern: pattern}, output_pattern) when is_list(pattern) do
-    # Get list of extracted names from input pattern
-    extracted_names =
-      pattern
-      |> Enum.filter(fn spec -> spec != nil end)
-
-    # Check that all output names are in extracted names
-    Enum.each(output_pattern, fn name ->
-      unless name in extracted_names do
-        raise "Output pattern references '#{name}' which was not extracted in input pattern"
-      end
-    end)
-  end
-
-  defp validate_output_pattern(%Prism{rest: true}, _output_pattern) do
-    # For rest patterns, we can't validate names since we don't know what will be extracted
-    # This is okay - runtime will handle it
-    :ok
-  end
-
-  # Helper to consume an identifier (for shorthand tag parsing)
-  defp consume_identifier("", acc), do: {acc |> Enum.reverse() |> IO.iodata_to_binary(), ""}
-
-  defp consume_identifier(<<char, rest::binary>>, acc)
-       when char in ?a..?z or char in ?A..?Z or char in ?0..?9 or char == ?_ do
-    consume_identifier(rest, [char | acc])
-  end
-
-  defp consume_identifier(rest, acc), do: {acc |> Enum.reverse() |> IO.iodata_to_binary(), rest}
 end

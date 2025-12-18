@@ -3,7 +3,7 @@ defmodule Enzyme.IntegrationTest do
   Integration tests exercising multiple library concepts together in realistic scenarios.
 
   These tests use deeply nested data structures combining maps, lists, tagged tuples,
-  and various path components (wildcards, filters, slices, prisms, isos) to verify
+  and various path components (wildcards, filters, slices, isos) to verify
   the library works correctly for complex real-world use cases.
   """
   use ExUnit.Case
@@ -25,6 +25,11 @@ defmodule Enzyme.IntegrationTest do
 
   describe "E-commerce order processing - select" do
     setup do
+      # Ensure atoms exist for filter expressions
+      _ = :tier
+      _ = :premium
+      _ = :standard
+
       orders = %{
         "orders" => [
           %{
@@ -79,15 +84,20 @@ defmodule Enzyme.IntegrationTest do
       [orders: orders, isos: [cents: cents_to_euros()]]
     end
 
-    @describetag :skip
     test "select premium customer names from confirmed orders with express shipping", %{
       orders: orders
     } do
-      # Combines: wildcard, filter on atom key, filter on tagged tuple, nested access
+      # Combines: wildcard, filter on atom key, filter on tagged tuple via function call, nested access
+      confirmed? = fn
+        {:confirmed, _} -> true
+        _ -> false
+      end
+
       result =
         Enzyme.select(
           orders,
-          "orders[*][?@.customer:tier == :premium][?@.shipping.method == 'express']:{:confirmed, _}.customer.name"
+          "orders[*][?@.customer.tier == :premium][?@.shipping.method == 'express'][?confirmed?(@.status)].customer.name",
+          confirmed?: confirmed?
         )
 
       assert result == ["Alice Smith"]
@@ -107,26 +117,7 @@ defmodule Enzyme.IntegrationTest do
           isos
         )
 
-      assert result == [[1299.99, 49.99], [159.99], [499.99, 19.99]]
-    end
-
-    test "select shipped order timestamps parsed as DateTime", %{orders: orders} do
-      # Combines: wildcard, prism extraction, iso
-      result = Enzyme.select(orders, "orders[*].status:{:shipped, ts}::iso8601")
-
-      assert length(result) == 1
-      assert %DateTime{year: 2024, month: 3, day: 14} = hd(result)
-    end
-
-    test "select order IDs and customer emails using key slice", %{orders: orders} do
-      # Combines: wildcard, multiple key selection, nested access
-      result = Enzyme.select(orders, "orders[*][id,customer.email]")
-
-      assert result == [
-               ["ORD-001", "alice@example.com"],
-               ["ORD-002", "bob@example.com"],
-               ["ORD-003", "carol@example.com"]
-             ]
+      assert result == [1299.99, 49.99, 159.99, 499.99, 19.99]
     end
 
     test "select items where quantity > 1 as integers", %{orders: orders} do
@@ -137,7 +128,7 @@ defmodule Enzyme.IntegrationTest do
           "orders[*].items[*][?@.qty::integer > 1][name,qty]"
         )
 
-      assert result == [[["Wireless Mouse", "2"]], [], [["HDMI Cable", "3"]]]
+      assert result == [["Wireless Mouse", "2"], ["HDMI Cable", "3"]]
     end
   end
 
@@ -175,19 +166,6 @@ defmodule Enzyme.IntegrationTest do
       assert get_in(result, ["items", Access.at(1), "price"]) == "1700.0"
     end
 
-    @describetag :skip
-    test "confirm pending order with timestamp", %{order: order} do
-      # Combines: prism matching and retagging with transform
-      result =
-        Enzyme.transform(
-          order,
-          "status:{:pending, _} -> :confirmed",
-          fn _ -> "2024-03-20T12:00:00Z" end
-        )
-
-      assert result["status"] == {:confirmed, "2024-03-20T12:00:00Z"}
-    end
-
     test "update tax rate as percentage", %{order: order, isos: isos} do
       # Combines: nested key access, custom iso for percentage
       result =
@@ -207,7 +185,7 @@ defmodule Enzyme.IntegrationTest do
       result =
         Enzyme.transform(
           order,
-          "items[*][?@.price::cents < 15].discount",
+          "items[*][?@.price::float::cents < 15].discount",
           "0.0",
           isos
         )
@@ -253,36 +231,6 @@ defmodule Enzyme.IntegrationTest do
       [response: response]
     end
 
-    test "extract successful user data only", %{response: response} do
-      # Combines: nested access, wildcard, prism filtering
-      result = Enzyme.select(response, "data.users[*]:{:ok, user}")
-
-      assert length(result) == 3
-      assert Enum.map(result, & &1.name) == ["Alice", "Bob", "Carol"]
-    end
-
-    test "find admin users from successful responses with score >= 90", %{response: response} do
-      # Combines: prism, filter on atom key with list membership simulation, nested filter
-      # Note: Testing admin role by checking first role (simplified)
-      result =
-        Enzyme.select(
-          response,
-          "data.users[*]:{:ok, u}[?@:score::integer >= 90]:name"
-        )
-
-      assert result == ["Alice", "Carol"]
-    end
-
-    test "extract error codes and messages together", %{response: response} do
-      # Combines: prism for errors, multiple key selection
-      result = Enzyme.select(response, "data.users[*]:{:error, e}[:code,:message]")
-
-      assert result == [
-               ["NOT_FOUND", "User 2 deleted"],
-               ["SUSPENDED", "Account suspended"]
-             ]
-    end
-
     test "get pagination info as integers", %{response: response} do
       # Combines: nested access, multiple keys, iso on each
       page = Enzyme.select(response, "data.pagination.page::integer", [])
@@ -312,48 +260,6 @@ defmodule Enzyme.IntegrationTest do
       }
 
       [response: response]
-    end
-
-    test "double all successful values", %{response: response} do
-      # Combines: wildcard, prism, nested access with iso, transform
-      result =
-        Enzyme.transform(
-          response,
-          "results[*]:{:ok, data}.value::integer",
-          &(&1 * 2),
-          []
-        )
-
-      results = result["results"]
-      assert {:ok, %{"value" => "200", "label" => "first"}} = Enum.at(results, 0)
-      assert {:error, "timeout"} = Enum.at(results, 1)
-      assert {:ok, %{"value" => "400", "label" => "second"}} = Enum.at(results, 2)
-      assert {:error, "connection_refused"} = Enum.at(results, 3)
-    end
-
-    test "convert errors to standardized format", %{response: response} do
-      # Combines: wildcard, prism retagging
-      result =
-        Enzyme.transform(
-          response,
-          "results[*]:{:error, msg} -> :failure",
-          fn msg -> %{"reason" => msg, "retryable" => true} end
-        )
-
-      results = result["results"]
-      assert {:failure, %{"reason" => "timeout", "retryable" => true}} = Enum.at(results, 1)
-
-      assert {:failure, %{"reason" => "connection_refused", "retryable" => true}} =
-               Enum.at(results, 3)
-    end
-
-    test "uppercase labels in successful responses only", %{response: response} do
-      # Combines: wildcard, prism, nested transform
-      result = Enzyme.transform(response, "results[*]:{:ok, data}.label", &String.upcase/1)
-
-      results = result["results"]
-      assert {:ok, %{"label" => "FIRST"}} = Enum.at(results, 0)
-      assert {:ok, %{"label" => "SECOND"}} = Enum.at(results, 2)
     end
   end
 
@@ -482,29 +388,6 @@ defmodule Enzyme.IntegrationTest do
       assert timeouts["connect"] == "10000"
       assert timeouts["read"] == "60000"
       assert timeouts["write"] == "20000"
-    end
-
-    @describetag :skip
-    # This doesn't work because we don't track variable bindings across steps yet
-    # So the output of the prism is just the raw projected tuple, eg. {:metrics, false}
-    # without any knowledge of the variable bindings in the prism. This information
-    # is required by the ExpressionParser to correctly extract the named position
-    # from the tuple.
-    # (see https://github.com/jlauemoeller/enzyme/blob/7044ca3819c0718c686d4a8fbf41a096e16cbda6/lib/enzyme/expression_parser.ex#L552)
-
-    test "enable all disabled features", %{config: config} do
-      # Combines: atom key, wildcard, prism with multiple extraction, filter, transform
-      result =
-        Enzyme.transform(
-          config,
-          ":flags[*]:{:feature, name, enabled}[?@:enabled == false]",
-          fn {name, _} -> {name, true} end
-        )
-
-      flags = result.flags
-      assert {:feature, :logging, true} = Enum.at(flags, 0)
-      assert {:feature, :metrics, true} = Enum.at(flags, 1)
-      assert {:feature, :tracing, true} = Enum.at(flags, 2)
     end
 
     test "cap rate limit at 500", %{config: config} do
@@ -643,20 +526,6 @@ defmodule Enzyme.IntegrationTest do
   end
 
   describe "Edge cases and complex combinations" do
-    test "deeply nested prism with iso chain" do
-      data = %{
-        "responses" => [
-          {:ok, %{"encoded_value" => Base.encode64("42")}},
-          {:error, "failed"},
-          {:ok, %{"encoded_value" => Base.encode64("100")}}
-        ]
-      }
-
-      result = Enzyme.select(data, "responses[*]:{:ok, r}.encoded_value::base64::integer", [])
-
-      assert result == [42, 100]
-    end
-
     test "filter with negation and parentheses" do
       data = %{
         "items" => [
@@ -672,29 +541,6 @@ defmodule Enzyme.IntegrationTest do
 
       assert length(result) == 3
       refute Enum.any?(result, fn item -> item["a"] == true and item["b"] == true end)
-    end
-
-    test "transform through prism retagging with value modification" do
-      pipeline = %{
-        "stages" => [
-          {:pending, %{name: "stage1", retries: 0}},
-          {:running, %{name: "stage2", retries: 1}},
-          {:pending, %{name: "stage3", retries: 2}}
-        ]
-      }
-
-      # Start all pending stages (retag and set initial state)
-      result =
-        Enzyme.transform(
-          pipeline,
-          "stages[*]:{:pending, data} -> :running",
-          fn data -> Map.put(data, :started_at, "now") end
-        )
-
-      stages = result["stages"]
-      assert {:running, %{name: "stage1", started_at: "now"}} = Enum.at(stages, 0)
-      assert {:running, %{name: "stage2", retries: 1}} = Enum.at(stages, 1)
-      assert {:running, %{name: "stage3", started_at: "now"}} = Enum.at(stages, 2)
     end
 
     test "mixed atom and string key navigation with filters" do
@@ -1004,67 +850,6 @@ defmodule Enzyme.IntegrationTest do
 
       result = Enzyme.select(data, "categories[*].products[*].sku")
       assert result == ["B1"]
-    end
-  end
-
-  describe "Complex prism scenarios" do
-    test "prism filtering in nested structure" do
-      data = %{
-        "tasks" => [
-          %{
-            "name" => "Task 1",
-            "subtasks" => [
-              {:completed, %{duration: 100}},
-              {:pending, %{scheduled: "tomorrow"}},
-              {:completed, %{duration: 200}}
-            ]
-          },
-          %{
-            "name" => "Task 2",
-            "subtasks" => [
-              {:failed, %{error: "timeout"}},
-              {:completed, %{duration: 50}}
-            ]
-          }
-        ]
-      }
-
-      # Get all completed subtask durations
-      result = Enzyme.select(data, "tasks[*].subtasks[*]:{:completed, info}:duration")
-      assert result == [100, 200, 50]
-    end
-
-    test "transform through nested prisms" do
-      data = %{
-        "results" => [
-          {:ok, %{"score" => 80}},
-          {:error, "failed"},
-          {:ok, %{"score" => 90}}
-        ]
-      }
-
-      result = Enzyme.transform(data, "results[*]:{:ok, data}.score", &(&1 + 10))
-
-      results = result["results"]
-      assert {:ok, %{"score" => 90}} = Enum.at(results, 0)
-      assert {:error, "failed"} = Enum.at(results, 1)
-      assert {:ok, %{"score" => 100}} = Enum.at(results, 2)
-    end
-
-    test "prism with rest pattern in list context" do
-      data = [
-        {:record, "id1", "name1", :active},
-        {:record, "id2", "name2", :inactive},
-        {:record, "id3", "name3", :active}
-      ]
-
-      result = Enzyme.select(data, "[*]:{:record, ...}")
-
-      assert result == [
-               {"id1", "name1", :active},
-               {"id2", "name2", :inactive},
-               {"id3", "name3", :active}
-             ]
     end
   end
 

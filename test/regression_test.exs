@@ -149,18 +149,6 @@ defmodule Enzyme.RegressionTest do
     end
   end
 
-  describe "Prism transform with assembly" do
-    @describetag :skip
-    test "only the extracted parts are passed to the transform function" do
-      assert {:point2d, 2, 4} ==
-               Enzyme.transform(
-                 {:point3d, 1, 2, 3},
-                 ":{:point3d, x, y, z} -> :{:point2d, x, z}",
-                 fn {x, z} -> {x + 1, z + 1} end
-               )
-    end
-  end
-
   describe "t" do
     setup do
       data = %{

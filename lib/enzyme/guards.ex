@@ -12,7 +12,6 @@ defmodule Enzyme.Guards do
                   is_struct(value, Enzyme.Filter) or
                   is_struct(value, Enzyme.Iso) or
                   is_struct(value, Enzyme.One) or
-                  is_struct(value, Enzyme.Prism) or
                   is_struct(value, Enzyme.Sequence) or
                   is_struct(value, Enzyme.Slice)
 

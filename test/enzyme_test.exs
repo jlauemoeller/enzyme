@@ -261,7 +261,9 @@ defmodule EnzymeTest do
   describe "select/2 with stacked filters" do
     test "filters by two conditions (AND logic)" do
       # Active offices not in PST timezone
-      assert Enzyme.select(@data, "offices[*][?@.active == true][?@.tz != 'PST'].name") == ["East"]
+      assert Enzyme.select(@data, "offices[*][?@.active == true][?@.tz != 'PST'].name") == [
+               "East"
+             ]
     end
 
     test "filters by three conditions" do

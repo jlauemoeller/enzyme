@@ -376,7 +376,9 @@ defmodule FilterIsoTest do
       atom_to_str = Iso.new(&Atom.to_string/1, &String.to_atom/1)
 
       result =
-        Enzyme.select(data, "items[*][?@.status == :active::atom_str].name", atom_str: atom_to_str)
+        Enzyme.select(data, "items[*][?@.status == :active::atom_str].name",
+          atom_str: atom_to_str
+        )
 
       assert result == ["a"]
     end

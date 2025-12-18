@@ -397,142 +397,6 @@ defmodule Enzyme.ReadmeTest do
     end
   end
 
-  describe "README - Prisms" do
-    test "extracts value from :ok tuples" do
-      assert Enzyme.select({:ok, 42}, ":{:ok, v}") == 42
-      assert Enzyme.select({:error, "oops"}, ":{:ok, v}") == nil
-    end
-
-    test "extracts from list of results" do
-      results = [{:ok, 1}, {:error, "failed"}, {:ok, 2}, {:error, "timeout"}]
-
-      assert Enzyme.select(results, "[*]:{:ok, v}") == [1, 2]
-      assert Enzyme.select(results, "[*]:{:error, reason}") == ["failed", "timeout"]
-    end
-  end
-
-  describe "README - Multiple Value Extraction" do
-    test "extracts multiple values as tuple" do
-      assert Enzyme.select({:rectangle, 3, 4}, ":{:rectangle, w, h}") == {3, 4}
-    end
-
-    test "extracts specific positions using _ to ignore" do
-      assert Enzyme.select({:rectangle, 3, 4}, ":{:rectangle, _, h}") == 4
-      assert Enzyme.select({:point3d, 1, 2, 3}, ":{:point3d, x, _, z}") == {1, 3}
-    end
-  end
-
-  describe "README - Rest Pattern" do
-    test "extracts all elements after tag" do
-      assert Enzyme.select({:ok, 42}, ":{:ok, ...}") == 42
-      assert Enzyme.select({:data, 1, 2, 3, 4}, ":{:data, ...}") == {1, 2, 3, 4}
-    end
-  end
-
-  describe "README - Filter-Only Prisms" do
-    test "filters without extracting" do
-      results = [{:ok, 1}, {:error, "x"}, {:ok, 2}]
-      assert Enzyme.select(results, "[*]:{:ok, _}") == [{:ok, 1}, {:ok, 2}]
-    end
-  end
-
-  describe "README - Transforming with Prisms" do
-    test "transforms value inside matching tuples" do
-      assert Enzyme.transform({:ok, 5}, ":{:ok, v}", &(&1 * 2)) == {:ok, 10}
-    end
-
-    test "non-matching tuples pass through unchanged" do
-      assert Enzyme.transform({:error, "x"}, ":{:ok, v}", &(&1 * 2)) == {:error, "x"}
-    end
-
-    test "transforms in a list" do
-      results = [{:ok, 1}, {:error, "x"}, {:ok, 2}]
-
-      assert Enzyme.transform(results, "[*]:{:ok, v}", &(&1 * 10)) == [
-               {:ok, 10},
-               {:error, "x"},
-               {:ok, 20}
-             ]
-    end
-  end
-
-  describe "README - Prisms in Complex Paths" do
-    test "extracts names from successful responses" do
-      data = %{
-        "responses" => [
-          {:ok, %{"user" => %{"name" => "Alice"}}},
-          {:error, "not found"},
-          {:ok, %{"user" => %{"name" => "Bob"}}}
-        ]
-      }
-
-      assert Enzyme.select(data, "responses[*]:{:ok, v}.user.name") == ["Alice", "Bob"]
-    end
-  end
-
-  describe "README - Retagging Prisms (shorthand)" do
-    test "changes tag from :ok to :success" do
-      assert Enzyme.select({:ok, 42}, ":{:ok, v} -> :success") == {:success, 42}
-    end
-
-    test "transforms and retags" do
-      assert Enzyme.transform({:ok, 5}, ":{:ok, v} -> :success", &(&1 * 2)) == {:success, 10}
-    end
-
-    test "retags in lists" do
-      results = [{:ok, 1}, {:error, "x"}, {:ok, 2}]
-
-      assert Enzyme.select(results, "[*]:{:ok, v} -> :success") == [
-               {:success, 1},
-               {:success, 2}
-             ]
-    end
-
-    test "retags filter-only prism" do
-      assert Enzyme.select({:ok, 42}, ":{:ok, _} -> :success") == {:success, 42}
-    end
-
-    test "retags with rest pattern" do
-      assert Enzyme.select({:data, 1, 2, 3}, ":{:data, ...} -> :values") == {:values, 1, 2, 3}
-    end
-  end
-
-  describe "README - Retagging Prisms (explicit assembly)" do
-    test "reorders values" do
-      assert Enzyme.select({:pair, 1, 2}, ":{:pair, a, b} -> :{:swapped, b, a}") ==
-               {:swapped, 2, 1}
-    end
-
-    test "drops a dimension" do
-      assert Enzyme.select({:point3d, 1, 2, 3}, ":{:point3d, x, y, z} -> :{:point2d, x, z}") ==
-               {:point2d, 1, 3}
-    end
-
-    test "duplicates a value" do
-      assert Enzyme.select({:single, 42}, ":{:single, v} -> :{:double, v, v}") ==
-               {:double, 42, 42}
-    end
-
-    test "extracts non-contiguous positions and reorders" do
-      assert Enzyme.select({:quad, 1, 2, 3, 4}, ":{:quad, a, _, c, _} -> :{:pair, c, a}") ==
-               {:pair, 3, 1}
-    end
-
-    # NOTE: The README example for transform with explicit assembly doesn't work
-    # as documented. Transform receives all extracted values {x, y, z}, not {x, z}.
-    # This test verifies basic transform with prism works.
-    test "transforms prism values" do
-      result =
-        Enzyme.transform(
-          {:point3d, 0, 0, 0},
-          ":{:point3d, x, y, z}",
-          fn {x, y, z} -> {x + 1, y + 2, z + 3} end
-        )
-
-      assert result == {:point3d, 1, 2, 3}
-    end
-  end
-
   describe "README - Isomorphisms" do
     test "select with builtin integer iso" do
       data = %{"count" => "42"}
@@ -740,6 +604,69 @@ defmodule Enzyme.ReadmeTest do
 
       sales_employees = get_in(result, ["departments", Access.at(1), "employees"])
       assert Enum.at(sales_employees, 0)["title"] == "SALES MANAGER"
+    end
+  end
+
+  describe "README - Function Calls in Filters" do
+    test "pattern matching with function" do
+      data = [
+        %{"status" => {:confirmed, "A123"}},
+        %{"status" => {:pending, "B456"}}
+      ]
+
+      confirmed? = fn
+        {:confirmed, _} -> true
+        _ -> false
+      end
+
+      result = Enzyme.select(data, "[*][?confirmed?(@.status)]", confirmed?: confirmed?)
+      assert result == [%{"status" => {:confirmed, "A123"}}]
+    end
+
+    test "calculations with function" do
+      data = [
+        %{"items" => [%{"price" => 10}, %{"price" => 20}]},
+        %{"items" => [%{"price" => 5}]}
+      ]
+
+      total = fn items -> Enum.reduce(items, 0, fn item, acc -> acc + item["price"] end) end
+
+      result = Enzyme.select(data, "[*][?total(@.items) > 15]", total: total)
+      assert result == [%{"items" => [%{"price" => 10}, %{"price" => 20}]}]
+    end
+
+    test "multiple arguments" do
+      data = [%{"value" => 50}, %{"value" => 150}]
+
+      in_range? = fn value, min, max -> value >= min and value <= max end
+
+      result = Enzyme.select(data, "[*][?in_range?(@.value, 0, 100)]", in_range?: in_range?)
+      assert result == [%{"value" => 50}]
+    end
+
+    test "with isos" do
+      data = [%{"count" => "42"}, %{"count" => "7"}]
+
+      even? = fn x -> rem(x, 2) == 0 end
+
+      result = Enzyme.select(data, "[*][?even?(@.count::integer)]", even?: even?)
+      assert result == [%{"count" => "42"}]
+    end
+
+    test "zero-arity functions" do
+      data = [
+        %{"created" => ~D[2024-01-01]},
+        %{"created" => ~D[2024-12-01]}
+      ]
+
+      result =
+        Enzyme.select(
+          data,
+          "[*][?@.created > cutoff()]",
+          cutoff: fn -> ~D[2024-06-01] end
+        )
+
+      assert result == [%{"created" => ~D[2024-12-01]}]
     end
   end
 end

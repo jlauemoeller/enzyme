@@ -54,47 +54,58 @@ defmodule Enzyme.ExpressionParserTest do
 
           expression = "#{left_operand} #{unquote(operator)} #{right_operand}"
 
-          op_atom = case unquote(operator) do
-            "==" -> :eq
-            "!=" -> :neq
-            "<" -> :lt
-            "<=" -> :lte
-            ">" -> :gt
-            ">=" -> :gte
-            "~~" -> :str_eq
-            "!~" -> :str_neq
-            "and" -> :and
-            "or" -> :or
-          end
+          op_atom =
+            case unquote(operator) do
+              "==" -> :eq
+              "!=" -> :neq
+              "<" -> :lt
+              "<=" -> :lte
+              ">" -> :gt
+              ">=" -> :gte
+              "~~" -> :str_eq
+              "!~" -> :str_neq
+              "and" -> :and
+              "or" -> :or
+            end
 
           # For 'and' and 'or', operands are wrapped in Expression with :get operator
           # For comparison operators, operands are raw
           wrap_for_logical = op_atom in [:and, :or]
 
-          left_operand_value = case unquote(left_type) do
-            :string_field -> {:field, ["field"]}
-            :atom_field -> {:field, [:field]}
-            :string -> {:literal, "value"}
-            :atom -> {:literal, :value}
-            :boolean -> {:literal, true}
-            :integer -> {:literal, 42}
-            :float -> {:literal, 3.14}
-          end
+          left_operand_value =
+            case unquote(left_type) do
+              :string_field -> {:field, ["field"]}
+              :atom_field -> {:field, [:field]}
+              :string -> {:literal, "value"}
+              :atom -> {:literal, :value}
+              :boolean -> {:literal, true}
+              :integer -> {:literal, 42}
+              :float -> {:literal, 3.14}
+            end
 
-          right_operand_value = case unquote(right_type) do
-            :string_field -> {:field, ["field"]}
-            :atom_field -> {:field, [:field]}
-            :string -> {:literal, "value"}
-            :atom -> {:literal, :value}
-            :boolean -> {:literal, true}
-            :integer -> {:literal, 42}
-            :float -> {:literal, 3.14}
-          end
+          right_operand_value =
+            case unquote(right_type) do
+              :string_field -> {:field, ["field"]}
+              :atom_field -> {:field, [:field]}
+              :string -> {:literal, "value"}
+              :atom -> {:literal, :value}
+              :boolean -> {:literal, true}
+              :integer -> {:literal, 42}
+              :float -> {:literal, 3.14}
+            end
 
           expected = %Expression{
-            left: if(wrap_for_logical, do: %Expression{left: left_operand_value, operator: :get, right: nil}, else: left_operand_value),
+            left:
+              if(wrap_for_logical,
+                do: %Expression{left: left_operand_value, operator: :get, right: nil},
+                else: left_operand_value
+              ),
             operator: op_atom,
-            right: if(wrap_for_logical, do: %Expression{left: right_operand_value, operator: :get, right: nil}, else: right_operand_value)
+            right:
+              if(wrap_for_logical,
+                do: %Expression{left: right_operand_value, operator: :get, right: nil},
+                else: right_operand_value
+              )
           }
 
           assert ExpressionParser.parse(expression) == expected,
@@ -180,146 +191,146 @@ defmodule Enzyme.ExpressionParserTest do
       expr = ExpressionParser.parse("@.name == 'test'")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{"name" => "test"}) == true
-      assert pred.(%{name: "other"}) == false
-      assert pred.(%{name: "test"}) == false
+      assert pred.(%{"name" => "test"}, []) == true
+      assert pred.(%{name: "other"}, []) == false
+      assert pred.(%{name: "test"}, []) == false
     end
 
     test "atom field equality with string value" do
       expr = ExpressionParser.parse("@:name == 'test'")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{name: "test"}) == true
-      assert pred.(%{name: "other"}) == false
-      assert pred.(%{"name" => "test"}) == false
+      assert pred.(%{name: "test"}, []) == true
+      assert pred.(%{name: "other"}, []) == false
+      assert pred.(%{"name" => "test"}, []) == false
     end
 
     test "string field equality with integer value" do
       expr = ExpressionParser.parse("@.count == 42")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{"count" => 42}) == true
-      assert pred.(%{"count" => 41}) == false
+      assert pred.(%{"count" => 42}, []) == true
+      assert pred.(%{"count" => 41}, []) == false
     end
 
     test "atom field equality with integer value" do
       expr = ExpressionParser.parse("@:count == 42")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{count: 42}) == true
-      assert pred.(%{count: 41}) == false
+      assert pred.(%{count: 42}, []) == true
+      assert pred.(%{count: 41}, []) == false
     end
 
     test "string field equality with boolean value" do
       expr = ExpressionParser.parse("@.active == true")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{"active" => true}) == true
-      assert pred.(%{"active" => false}) == false
+      assert pred.(%{"active" => true}, []) == true
+      assert pred.(%{"active" => false}, []) == false
     end
 
     test "atom field equality with boolean value" do
       expr = ExpressionParser.parse("@:active == true")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{active: true}) == true
-      assert pred.(%{active: false}) == false
+      assert pred.(%{active: true}, []) == true
+      assert pred.(%{active: false}, []) == false
     end
 
     test "string field equality with atom value" do
       expr = ExpressionParser.parse("@.status == :pending")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{"status" => :pending}) == true
-      assert pred.(%{"status" => :complete}) == false
+      assert pred.(%{"status" => :pending}, []) == true
+      assert pred.(%{"status" => :complete}, []) == false
     end
 
     test "atom field equality with atom value" do
       expr = ExpressionParser.parse("@:status == :pending")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{status: :pending}) == true
-      assert pred.(%{status: :complete}) == false
+      assert pred.(%{status: :pending}, []) == true
+      assert pred.(%{status: :complete}, []) == false
     end
 
     test "@ (self) equality" do
       expr = ExpressionParser.parse("@ == 42")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(42) == true
-      assert pred.(41) == false
+      assert pred.(42, []) == true
+      assert pred.(41, []) == false
     end
 
     test "@ (self) with string comparison" do
       expr = ExpressionParser.parse("@ == 'hello'")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.("hello") == true
-      assert pred.("world") == false
+      assert pred.("hello", []) == true
+      assert pred.("world", []) == false
     end
 
     test "string field inequality operator" do
       expr = ExpressionParser.parse("@.status != 'closed'")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{"status" => "open"}) == true
-      assert pred.(%{"status" => "closed"}) == false
+      assert pred.(%{"status" => "open"}, []) == true
+      assert pred.(%{"status" => "closed"}, []) == false
     end
 
     test "atom field inequality operator" do
       expr = ExpressionParser.parse("@:status != 'closed'")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{status: "open"}) == true
-      assert pred.(%{status: "closed"}) == false
+      assert pred.(%{status: "open"}, []) == true
+      assert pred.(%{status: "closed"}, []) == false
     end
 
     test "string field string equality operator converts to string" do
       expr = ExpressionParser.parse("@.value ~~ '42'")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{"value" => 42}) == true
-      assert pred.(%{"value" => "42"}) == true
-      assert pred.(%{"value" => 41}) == false
+      assert pred.(%{"value" => 42}, []) == true
+      assert pred.(%{"value" => "42"}, []) == true
+      assert pred.(%{"value" => 41}, []) == false
     end
 
     test "atom field string equality operator converts to string" do
       expr = ExpressionParser.parse("@:value ~~ '42'")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{value: 42}) == true
-      assert pred.(%{value: "42"}) == true
-      assert pred.(%{value: 41}) == false
+      assert pred.(%{value: 42}, []) == true
+      assert pred.(%{value: "42"}, []) == true
+      assert pred.(%{value: 41}, []) == false
     end
 
     test "string field string inequality operator converts to string" do
       expr = ExpressionParser.parse("@.value !~ '42'")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{"value" => 42}) == false
-      assert pred.(%{"value" => 41}) == true
+      assert pred.(%{"value" => 42}, []) == false
+      assert pred.(%{"value" => 41}, []) == true
     end
 
     test "atom field string inequality operator converts to string" do
       expr = ExpressionParser.parse("@:value !~ '42'")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{value: 42}) == false
-      assert pred.(%{value: 41}) == true
+      assert pred.(%{value: 42}, []) == false
+      assert pred.(%{value: 41}, []) == true
     end
 
     test "missing string field returns nil" do
       expr = ExpressionParser.parse("@.missing == nil")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{"other" => "value"}) == true
+      assert pred.(%{"other" => "value"}, []) == true
     end
 
     test "missing atom field returns nil" do
       expr = ExpressionParser.parse("@:missing == nil")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{other: "value"}) == true
+      assert pred.(%{other: "value"}, []) == true
     end
   end
 
@@ -328,46 +339,46 @@ defmodule Enzyme.ExpressionParserTest do
       expr = ExpressionParser.parse("@:active == true and @:role == 'admin'")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{active: true, role: "admin"}) == true
-      assert pred.(%{active: true, role: "user"}) == false
-      assert pred.(%{active: false, role: "admin"}) == false
-      assert pred.(%{active: false, role: "user"}) == false
+      assert pred.(%{active: true, role: "admin"}, []) == true
+      assert pred.(%{active: true, role: "user"}, []) == false
+      assert pred.(%{active: false, role: "admin"}, []) == false
+      assert pred.(%{active: false, role: "user"}, []) == false
     end
 
     test "parses and evaluates 'or' operator" do
       expr = ExpressionParser.parse("@:role == 'admin' or @:role == 'superuser'")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{role: "admin"}) == true
-      assert pred.(%{role: "superuser"}) == true
-      assert pred.(%{role: "user"}) == false
+      assert pred.(%{role: "admin"}, []) == true
+      assert pred.(%{role: "superuser"}, []) == true
+      assert pred.(%{role: "user"}, []) == false
     end
 
     test "parses and evaluates 'not' operator" do
       expr = ExpressionParser.parse("not @:active == true")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{active: true}) == false
-      assert pred.(%{active: false}) == true
+      assert pred.(%{active: true}, []) == false
+      assert pred.(%{active: false}, []) == true
     end
 
     test "parses chained 'and' operators (left associative)" do
       expr = ExpressionParser.parse("@:a == 1 and @:b == 2 and @:c == 3")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{a: 1, b: 2, c: 3}) == true
-      assert pred.(%{a: 1, b: 2, c: 4}) == false
-      assert pred.(%{a: 0, b: 2, c: 3}) == false
+      assert pred.(%{a: 1, b: 2, c: 3}, []) == true
+      assert pred.(%{a: 1, b: 2, c: 4}, []) == false
+      assert pred.(%{a: 0, b: 2, c: 3}, []) == false
     end
 
     test "parses chained 'or' operators (left associative)" do
       expr = ExpressionParser.parse("@:a == 1 or @:b == 2 or @:c == 3")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{a: 1, b: 0, c: 0}) == true
-      assert pred.(%{a: 0, b: 2, c: 0}) == true
-      assert pred.(%{a: 0, b: 0, c: 3}) == true
-      assert pred.(%{a: 0, b: 0, c: 0}) == false
+      assert pred.(%{a: 1, b: 0, c: 0}, []) == true
+      assert pred.(%{a: 0, b: 2, c: 0}, []) == true
+      assert pred.(%{a: 0, b: 0, c: 3}, []) == true
+      assert pred.(%{a: 0, b: 0, c: 0}, []) == false
     end
 
     test "'and' has higher precedence than 'or'" do
@@ -376,13 +387,13 @@ defmodule Enzyme.ExpressionParserTest do
       pred = ExpressionParser.compile(expr)
 
       # a=1 makes whole expression true regardless of b and c
-      assert pred.(%{a: 1, b: 0, c: 0}) == true
+      assert pred.(%{a: 1, b: 0, c: 0}, []) == true
 
       # a!=1, but b=2 and c=3 makes it true
-      assert pred.(%{a: 0, b: 2, c: 3}) == true
+      assert pred.(%{a: 0, b: 2, c: 3}, []) == true
 
       # a!=1, and b=2 but c!=3 makes it false
-      assert pred.(%{a: 0, b: 2, c: 0}) == false
+      assert pred.(%{a: 0, b: 2, c: 0}, []) == false
     end
 
     test "'not' has higher precedence than 'and'" do
@@ -390,17 +401,17 @@ defmodule Enzyme.ExpressionParserTest do
       expr = ExpressionParser.parse("not @:a == true and @:b == true")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{a: false, b: true}) == true
-      assert pred.(%{a: true, b: true}) == false
-      assert pred.(%{a: false, b: false}) == false
+      assert pred.(%{a: false, b: true}, []) == true
+      assert pred.(%{a: true, b: true}, []) == false
+      assert pred.(%{a: false, b: false}, []) == false
     end
 
     test "double not" do
       expr = ExpressionParser.parse("not not @:active == true")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{active: true}) == true
-      assert pred.(%{active: false}) == false
+      assert pred.(%{active: true}, []) == true
+      assert pred.(%{active: false}, []) == false
     end
   end
 
@@ -412,21 +423,21 @@ defmodule Enzyme.ExpressionParserTest do
       pred = ExpressionParser.compile(expr)
 
       # a=1 but c!=3 -> false (parens make 'or' evaluate first, then 'and' with c)
-      assert pred.(%{a: 1, b: 0, c: 0}) == false
+      assert pred.(%{a: 1, b: 0, c: 0}, []) == false
 
       # a=1 and c=3 -> true
-      assert pred.(%{a: 1, b: 0, c: 3}) == true
+      assert pred.(%{a: 1, b: 0, c: 3}, []) == true
 
       # b=2 and c=3 -> true
-      assert pred.(%{a: 0, b: 2, c: 3}) == true
+      assert pred.(%{a: 0, b: 2, c: 3}, []) == true
     end
 
     test "nested parentheses" do
       expr = ExpressionParser.parse("((@:a == 1 or @:b == 2) and @:c == 3)")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{a: 1, b: 0, c: 3}) == true
-      assert pred.(%{a: 1, b: 0, c: 0}) == false
+      assert pred.(%{a: 1, b: 0, c: 3}, []) == true
+      assert pred.(%{a: 1, b: 0, c: 0}, []) == false
     end
 
     test "parentheses with not" do
@@ -434,19 +445,19 @@ defmodule Enzyme.ExpressionParserTest do
       expr = ExpressionParser.parse("not (@:a == true or @:b == true)")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{a: false, b: false}) == true
-      assert pred.(%{a: true, b: false}) == false
-      assert pred.(%{a: false, b: true}) == false
-      assert pred.(%{a: true, b: true}) == false
+      assert pred.(%{a: false, b: false}, []) == true
+      assert pred.(%{a: true, b: false}, []) == false
+      assert pred.(%{a: false, b: true}, []) == false
+      assert pred.(%{a: true, b: true}, []) == false
     end
 
     test "complex expression with multiple levels" do
       expr = ExpressionParser.parse("(@:a == 1 and @:b == 2) or (@:c == 3 and @:d == 4)")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{a: 1, b: 2, c: 0, d: 0}) == true
-      assert pred.(%{a: 0, b: 0, c: 3, d: 4}) == true
-      assert pred.(%{a: 1, b: 0, c: 3, d: 0}) == false
+      assert pred.(%{a: 1, b: 2, c: 0, d: 0}, []) == true
+      assert pred.(%{a: 0, b: 0, c: 3, d: 4}, []) == true
+      assert pred.(%{a: 1, b: 0, c: 3, d: 0}, []) == false
     end
 
     test "raises on unclosed parenthesis" do
@@ -461,19 +472,19 @@ defmodule Enzyme.ExpressionParserTest do
       expr = ExpressionParser.parse("@:count > 5 and @:count < 10")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{count: 7}) == true
-      assert pred.(%{count: 5}) == false
-      assert pred.(%{count: 10}) == false
+      assert pred.(%{count: 7}, []) == true
+      assert pred.(%{count: 5}, []) == false
+      assert pred.(%{count: 10}, []) == false
     end
 
     test "complex filter expression" do
       expr = ExpressionParser.parse("@:active == true and (@:score >= 80 or @:role == 'admin')")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{active: true, score: 90, role: "user"}) == true
-      assert pred.(%{active: true, score: 70, role: "admin"}) == true
-      assert pred.(%{active: true, score: 70, role: "user"}) == false
-      assert pred.(%{active: false, score: 90, role: "admin"}) == false
+      assert pred.(%{active: true, score: 90, role: "user"}, []) == true
+      assert pred.(%{active: true, score: 70, role: "admin"}, []) == true
+      assert pred.(%{active: true, score: 70, role: "user"}, []) == false
+      assert pred.(%{active: false, score: 90, role: "admin"}, []) == false
     end
   end
 
@@ -523,10 +534,10 @@ defmodule Enzyme.ExpressionParserTest do
       pred = ExpressionParser.compile(expr)
 
       data = %{"user" => %{"name" => "Alice", "age" => 30}}
-      assert pred.(data) == true
+      assert pred.(data, []) == true
 
       data2 = %{"user" => %{"name" => "Bob", "age" => 25}}
-      assert pred.(data2) == false
+      assert pred.(data2, []) == false
     end
 
     test "evaluates chained atom field access" do
@@ -534,10 +545,10 @@ defmodule Enzyme.ExpressionParserTest do
       pred = ExpressionParser.compile(expr)
 
       data = %{user: %{profile: %{name: "Charlie", verified: true}}}
-      assert pred.(data) == true
+      assert pred.(data, []) == true
 
       data2 = %{user: %{profile: %{name: "Dana", verified: false}}}
-      assert pred.(data2) == false
+      assert pred.(data2, []) == false
     end
 
     test "evaluates mixed chain" do
@@ -545,10 +556,10 @@ defmodule Enzyme.ExpressionParserTest do
       pred = ExpressionParser.compile(expr)
 
       data = %{"config" => %{settings: %{"debug" => true}}}
-      assert pred.(data) == true
+      assert pred.(data, []) == true
 
       data2 = %{"config" => %{settings: %{"debug" => false}}}
-      assert pred.(data2) == false
+      assert pred.(data2, []) == false
     end
 
     test "returns nil for missing intermediate field" do
@@ -556,7 +567,7 @@ defmodule Enzyme.ExpressionParserTest do
       pred = ExpressionParser.compile(expr)
 
       data = %{"user" => %{"age" => 30}}
-      assert pred.(data) == true
+      assert pred.(data, []) == true
     end
 
     test "returns nil for non-map intermediate value" do
@@ -564,7 +575,7 @@ defmodule Enzyme.ExpressionParserTest do
       pred = ExpressionParser.compile(expr)
 
       data = %{"user" => %{"name" => "Alice"}}
-      assert pred.(data) == false
+      assert pred.(data, []) == false
     end
 
     test "evaluates deeply nested chain" do
@@ -583,17 +594,19 @@ defmodule Enzyme.ExpressionParserTest do
         }
       }
 
-      assert pred.(data) == true
+      assert pred.(data, []) == true
     end
 
     test "parses chained field with multiple isos" do
       expr = ExpressionParser.parse("@.data.encoded::base64::integer > 18")
 
       assert %Expression{
-               left: {:field_with_isos, ["data", "encoded"], [
-                 %IsoRef{name: :base64},
-                 %IsoRef{name: :integer}
-               ]},
+               left:
+                 {:field_with_isos, ["data", "encoded"],
+                  [
+                    %IsoRef{name: :base64},
+                    %IsoRef{name: :integer}
+                  ]},
                operator: :gt,
                right: {:literal, 18}
              } = expr
@@ -707,95 +720,95 @@ defmodule Enzyme.ExpressionParserTest do
       expr = ExpressionParser.parse("@.active")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{"active" => true}) == true
-      assert pred.(%{"active" => 1}) == true
-      assert pred.(%{"active" => "yes"}) == true
-      assert pred.(%{"active" => []}) == true
-      assert pred.(%{"active" => %{}}) == true
-      assert pred.(%{"active" => 0}) == true
+      assert pred.(%{"active" => true}, []) == true
+      assert pred.(%{"active" => 1}, []) == true
+      assert pred.(%{"active" => "yes"}, []) == true
+      assert pred.(%{"active" => []}, []) == true
+      assert pred.(%{"active" => %{}}, []) == true
+      assert pred.(%{"active" => 0}, []) == true
     end
 
     test "evaluates falsy field values" do
       expr = ExpressionParser.parse("@.active")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{"active" => false}) == false
-      assert pred.(%{"active" => nil}) == false
-      assert pred.(%{"missing" => true}) == false
+      assert pred.(%{"active" => false}, []) == false
+      assert pred.(%{"active" => nil}, []) == false
+      assert pred.(%{"missing" => true}, []) == false
     end
 
     test "evaluates self reference with truthy values" do
       expr = ExpressionParser.parse("@")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(true) == true
-      assert pred.(1) == true
-      assert pred.("string") == true
-      assert pred.([]) == true
-      assert pred.(%{}) == true
-      assert pred.(0) == true
+      assert pred.(true, []) == true
+      assert pred.(1, []) == true
+      assert pred.("string", []) == true
+      assert pred.([], []) == true
+      assert pred.(%{}, []) == true
+      assert pred.(0, []) == true
     end
 
     test "evaluates self reference with falsy values" do
       expr = ExpressionParser.parse("@")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(false) == false
-      assert pred.(nil) == false
+      assert pred.(false, []) == false
+      assert pred.(nil, []) == false
     end
 
     test "evaluates literal true" do
       expr = ExpressionParser.parse("true")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.("anything") == true
-      assert pred.(%{}) == true
-      assert pred.(nil) == true
+      assert pred.("anything", []) == true
+      assert pred.(%{}, []) == true
+      assert pred.(nil, []) == true
     end
 
     test "evaluates literal false" do
       expr = ExpressionParser.parse("false")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.("anything") == false
-      assert pred.(%{}) == false
-      assert pred.(nil) == false
+      assert pred.("anything", []) == false
+      assert pred.(%{}, []) == false
+      assert pred.(nil, []) == false
     end
 
     test "evaluates literal nil" do
       expr = ExpressionParser.parse("nil")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.("anything") == false
-      assert pred.(%{}) == false
-      assert pred.(nil) == false
+      assert pred.("anything", []) == false
+      assert pred.(%{}, []) == false
+      assert pred.(nil, []) == false
     end
 
     test "evaluates chained fields" do
       expr = ExpressionParser.parse("@.user.profile.verified")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{"user" => %{"profile" => %{"verified" => true}}}) == true
-      assert pred.(%{"user" => %{"profile" => %{"verified" => false}}}) == false
-      assert pred.(%{"user" => %{"profile" => %{"verified" => nil}}}) == false
-      assert pred.(%{"user" => %{"name" => "Alice"}}) == false
+      assert pred.(%{"user" => %{"profile" => %{"verified" => true}}}, []) == true
+      assert pred.(%{"user" => %{"profile" => %{"verified" => false}}}, []) == false
+      assert pred.(%{"user" => %{"profile" => %{"verified" => nil}}}, []) == false
+      assert pred.(%{"user" => %{"name" => "Alice"}}, []) == false
     end
 
     test "evaluates atom field" do
       expr = ExpressionParser.parse("@:active")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.(%{active: true}) == true
-      assert pred.(%{active: false}) == false
-      assert pred.(%{active: nil}) == false
-      assert pred.(%{other: true}) == false
+      assert pred.(%{active: true}, []) == true
+      assert pred.(%{active: false}, []) == false
+      assert pred.(%{active: nil}, []) == false
+      assert pred.(%{other: true}, []) == false
     end
 
     test "evaluates numeric literal" do
       expr = ExpressionParser.parse("42")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.("anything") == true
+      assert pred.("anything", []) == true
     end
 
     test "evaluates zero literal" do
@@ -803,14 +816,14 @@ defmodule Enzyme.ExpressionParserTest do
       pred = ExpressionParser.compile(expr)
 
       # In Elixir, 0 is truthy (only nil and false are falsy)
-      assert pred.("anything") == true
+      assert pred.("anything", []) == true
     end
 
     test "evaluates string literal" do
       expr = ExpressionParser.parse("'hello'")
       pred = ExpressionParser.compile(expr)
 
-      assert pred.("anything") == true
+      assert pred.("anything", []) == true
     end
 
     test "evaluates empty string literal" do
@@ -818,7 +831,7 @@ defmodule Enzyme.ExpressionParserTest do
       pred = ExpressionParser.compile(expr)
 
       # In Elixir, empty string is truthy
-      assert pred.("anything") == true
+      assert pred.("anything", []) == true
     end
   end
 end

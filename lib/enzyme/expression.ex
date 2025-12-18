@@ -42,6 +42,11 @@ defmodule Enzyme.Expression do
     defp format({:literal_with_isos, literal, isos}),
       do: "#{inspect(literal)}::#{format_isos(isos)}"
 
+    defp format({:function_call, name, args}) do
+      args_str = Enum.map_join(args, ", ", &format/1)
+      "#{name}(#{args_str})"
+    end
+
     defp format({:literal, value}), do: "#{value}"
     defp format({:self}), do: "@"
     defp format(value) when is_binary(value), do: value

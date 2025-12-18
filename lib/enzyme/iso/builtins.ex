@@ -133,6 +133,7 @@ defmodule Enzyme.Iso.Builtins do
   defp json_decode!(string) do
     case Code.ensure_loaded(Jason) do
       {:module, _} ->
+        # credo:disable-for-next-line Credo.Check.Refactor.Apply
         apply(Jason, :decode!, [string])
 
       {:error, _} ->
@@ -146,6 +147,7 @@ defmodule Enzyme.Iso.Builtins do
   defp json_encode!(term) do
     case Code.ensure_loaded(Jason) do
       {:module, _} ->
+        # credo:disable-for-next-line Credo.Check.Refactor.Apply
         apply(Jason, :encode!, [term])
 
       {:error, _} ->

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- BREAKING: Removed Prism lens - The Prism lens for matching tagged tuples has been removed. Use function calls in filter expressions instead (e.g., `[?is_ok(@)]` instead of `:{:ok, v}`). Function calls provide more flexibility and can match any pattern, not just tagged tuples.
 - BREAKING: The [*] selector (All lens) now flattens nested lists in its output. For example, selecting "matrix[\*][*].v" from a structure with a matrix of values will return a flat list of all "v" values instead of a list of lists. This change improves usability and consistency with common expectations for "all" selectors.
 - BREAKING: Filter expressions now require explicit `@.` prefixes for field access on the current item. For example, use `[?@.active == true]` instead of `[?active == true]`. This change enhances clarity and avoids ambiguity in filter expressions.
 
@@ -22,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Support for chained filter expressions, allowing more complex filtering logic in selections.
+- New function calls in filter expressions for common operations (e.g., `is_ok/1`, `is_error/1`).
 
   0.3.1 - 2025-12-10
 

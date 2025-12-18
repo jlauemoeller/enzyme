@@ -618,17 +618,6 @@ defmodule Enzyme.ParserTest do
                ]
              } = result
     end
-
-    test "does not confuse : with :{ (prism)" do
-      result = Parser.parse(":data:{:ok, v}")
-
-      assert %Sequence{
-               lenses: [
-                 %One{index: :data},
-                 %Enzyme.Prism{tag: :ok}
-               ]
-             } = result
-    end
   end
 
   describe "parse/1 edge cases" do

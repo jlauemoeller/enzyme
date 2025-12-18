@@ -5,7 +5,6 @@ defmodule Enzyme do
   alias Enzyme.IsoRef
   alias Enzyme.One
   alias Enzyme.Parser
-  alias Enzyme.Prism
   alias Enzyme.Protocol
   alias Enzyme.Sequence
   alias Enzyme.Slice
@@ -16,12 +15,12 @@ defmodule Enzyme do
   import Enzyme.Tracing
   import Enzyme.Wraps
 
-  @type lens :: All.t() | Filter.t() | Iso.t() | One.t() | Prism.t() | Sequence.t() | Slice.t()
+  @type lens :: All.t() | Filter.t() | Iso.t() | One.t() | Sequence.t() | Slice.t()
 
   @moduledoc """
   A powerful Elixir library for querying and transforming deeply nested data structures using an expressive path syntax.
 
-  Enzyme lets you precisely locate and transform data deep within Elixir data structures using an intuitive path syntax. Rather than manually traversing nested maps and lists, you can extract or modify specific values with indexing, slicing, wildcards, filters, and prisms. The library even converts data between different representations automatically making it ideal for processing JSON APIs and configuration files. Enzyme implements functional lenses under the hood, but no lens theory knowledge is required to use it effectively.
+  Enzyme lets you precisely locate and transform data deep within Elixir data structures using an intuitive path syntax. Rather than manually traversing nested maps and lists, you can extract or modify specific values with indexing, slicing, wildcards, and filters. The library even converts data between different representations automatically making it ideal for processing JSON APIs and configuration files. Enzyme implements functional lenses under the hood, but no lens theory knowledge is required to use it effectively.
 
   See the [README](README.md) for more information and examples.
 
@@ -233,69 +232,6 @@ defmodule Enzyme do
   end
 
   @doc """
-  Creates a prism that matches tagged tuples and extracts values.
-
-  Prisms are optics for sum types (tagged tuples like `{:ok, value}` or
-  `{:error, reason}`). They may or may not match - non-matching values
-  return nil on select, or pass through unchanged on transform.
-
-  ## Parameters
-
-  - `tag` - The atom tag to match (first element of tuple)
-  - `pattern` - Extraction pattern:
-    - `:...` - Extract all elements after the tag
-    - List of names/nils - Extract named positions, ignore nils
-
-  ## Pattern Semantics
-
-  | Pattern | Input | Output |
-  |---------|-------|--------|
-  | `[:v]` | `{:ok, 5}` | `5` (single → unwrap) |
-  | `[:w, :h]` | `{:rect, 3, 4}` | `{3, 4}` (multiple → tuple) |
-  | `[nil, :h]` | `{:rect, 3, 4}` | `4` (only named) |
-  | `:...` | `{:rect, 3, 4}` | `{3, 4}` (all after tag) |
-  | `[nil]` | `{:ok, 5}` | `{:ok, 5}` (filter only) |
-
-  ## Examples
-
-      iex> prism = Enzyme.prism(:ok, [:value])
-      iex> Enzyme.select({:ok, 5}, prism)
-      5
-
-      iex> prism = Enzyme.prism(:ok, [:value])
-      iex> Enzyme.select({:error, "oops"}, prism)
-      nil
-
-      iex> prism = Enzyme.prism(:rectangle, [:w, :h])
-      iex> Enzyme.select({:rectangle, 3, 4}, prism)
-      {3, 4}
-
-      iex> prism = Enzyme.prism(:ok, :...)
-      iex> Enzyme.select({:ok, 5}, prism)
-      5
-
-  """
-  @spec prism(atom(), :... | [atom() | nil]) :: Prism.t()
-  def prism(tag, pattern) when is_atom(tag) do
-    Prism.new(tag, pattern)
-  end
-
-  @doc """
-  Creates a prism composed with an existing lens. The composition is left
-  associative so the lens is applied first.
-
-  ## Examples
-
-      iex> lens = Enzyme.one("result") |> Enzyme.prism(:ok, [:v])
-      iex> Enzyme.select(%{"result" => {:ok, 42}}, lens)
-      42
-
-  """
-  def prism(lens, tag, pattern) when is_lens(lens) and is_atom(tag) do
-    %Sequence{lenses: [lens, prism(tag, pattern)]}
-  end
-
-  @doc """
   Creates a new iso with bidirectional mapping functions.
 
   ## Parameters
@@ -488,11 +424,16 @@ defmodule Enzyme do
     end
   end
 
-  # Handle Filter with unresolved isos in expression
+  # Handle Filter with unresolved isos and/or function calls in expression
   defp resolve_isos(%Filter{predicate: nil, expression: expr} = filter, opts) do
     # Resolve isos in the expression, then compile to predicate
     resolved_expr = Enzyme.ExpressionParser.resolve_expression_isos(expr, opts)
-    predicate = Enzyme.ExpressionParser.compile(resolved_expr)
+
+    # Compiled predicate expects (element, opts), but Filter protocol expects (element)
+    # Wrap it to pass opts
+    predicate_fn = Enzyme.ExpressionParser.compile(resolved_expr)
+    predicate = fn element -> predicate_fn.(element, opts) end
+
     %Filter{filter | predicate: predicate}
   end
 

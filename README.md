@@ -6,7 +6,7 @@ A powerful Elixir library for digesting, querying, and transforming deeply neste
 
 ## Overview
 
-Enzyme lets you precisely locate and transform data deep within Elixir data structures using an intuitive path syntax. Rather than manually traversing nested maps and lists, you can extract or modify specific values with indexing, slicing, wildcards, filters, and prisms. The library even converts data between different representations on the fly making it ideal for processing JSON API responses,configuration files, or working with complex text fixtures. Enzyme implements functional lenses under the hood, but no lens theory knowledge is required to use it effectively.
+Enzyme lets you precisely locate and transform data deep within Elixir data structures using an intuitive path syntax. Rather than manually traversing nested maps and lists, you can extract or modify specific values with indexing, slicing, wildcards, and filters. The library even converts data between different representations on the fly making it ideal for processing JSON API responses, configuration files, or working with complex text fixtures. Enzyme implements functional lenses under the hood, but no lens theory knowledge is required to use it effectively.
 
 ## Example
 
@@ -107,7 +107,7 @@ Enzyme.transform(
 ```
 
 Notice how we use the `cents` iso both in the `[?filter]` expression and on the price field itself. Unlike `select` and filter expressions,
-`transform` first applies the "forward" function to convert the selected data to the working representation, hand that to the transformation function, and then applies the inverse "backward" function to convert the transformed value back to the base representation. This final value then replaces the original value in the data structure.
+`transform` first applies the "forward" function to convert the selected data to the working representation, hand that to the transformation function, and then applies the inverse "backward" function to convert the transformed value back to the base representation. This final value then replaces the original value in the data structure. The `cents_iso` function allows the transformation to take place using a more convenient representation.
 
 Here's what that looks like as a diagram:
 
@@ -191,10 +191,9 @@ The `single` and `many` markers indicate whether the focus is on a single value 
 
 ## Features
 
-- **Path-based or programmatic construction**: Lenses can be constructed either from string paths or programmatically. Paths can include slices, wildcards, filters, prisms, and isomorphisms. In most cases, the path syntax is more concise and easier to read but programmatic construction is available for dynamic scenarios and for when you need filters that cannot be expressed in the path syntax.
+- **Path-based or programmatic construction**: Lenses can be constructed either from string paths or programmatically. Paths can include slices, wildcards, filters, and isomorphisms. In most cases, the path syntax is more concise and easier to read but programmatic construction is available for dynamic scenarios and for when you need filters that cannot be expressed in the path syntax.
 - **Filter expressions**: The lens focus can be fine tuned using filter expressions with logical operators and comparison operators. Isomorphisms can be applied within filters for type-safe comparisons.
-- **Prisms**: You can select and filter tagged tuples (aka. "sum types") like `{:ok, value}` and `{:error, reason}`. Enzyme supports optional retagging and value reassembly so you can project sum types into different shapes.
-- **Extensible Isomorphisms**: Lenses can use bidirectional transformations (isomorphims) for viewing or transforming data through a conversion layer. You can use built-in isos or define arbitrarily complex custom ones.
+- **Extensible Isomorphisms**: Lenses can use bidirectional transformations (isomorphisms) for viewing or transforming data through a conversion layer. You can use built-in isos or define arbitrarily complex custom ones.
 - **Composable**: Lenses can be composed together to create complex queries and transformations from smaller reusable parts.
 - **Reusable**: Create reusable lens objects or selector/transformer functions for repeated use. This improves performance by avoiding repeated parsing of path strings.
 - **Efficient**: Designed for performance with minimal overhead. The parser is a fast recursive descent parser, and lens operations are optimized for common use cases.
@@ -218,13 +217,11 @@ Paths are recipes for how to navigate and manipulate data structures. The Enzyme
 
 Enzyme allows you to work with complex data structures in a declarative way where you specify _where_ you want to extract or change data rather than _how_ to traverse the data structure step-by-step. This leads to more concise and maintainable code and makes it much easier to adapt to changing data structures.
 
-One particularly powerful aspect of functional lenses is their ability to conceptually focus on multiple values at once (e.g. all items in a list), and that they can be combined with filters, prisms, and isomorphisms to create complex queries and transformations. The lens focus is not limited to a single "node" in the data structure but simultaneously tracks multiple nodes as needed.
-
-### Dot and Colon Notation
+### String or Atom Keys
 
 So far, all our examples have been based on parsed JSON which yields nested maps with string keys, and lists. It would seem that keys are always assumed to be strings, making them unsuited for Elixir structs or maps with atom keys. However, the path syntax allows you to work with atom keys as well. Keys are treated as strings when using dot notation but you can use a ':' as the path separator to indicate that a key is an atom. So `company:name` means "first perform a lookup using the string `"company"`, then lookup `:name` in the result. `:company:name` would mean that both keys are atoms. You can mix and match dot and colon notation as needed. Atoms are always converted from strings using `String.to_existing_atom/1`, so make sure the atoms you reference already exist to avoid runtime errors.
 
-Use dot notation to access map keys:
+Use dot or colon notation to access map keys:
 
 ```elixir
 data = %{"company" => %Company{name: "Acme", founded: 1990}}
@@ -254,9 +251,9 @@ Enzyme.select(data, "items[0,2]")
 # => ["first", "third"]
 ```
 
-### String or Atom Indices
+### Slices
 
-You can also use brackets for string or atom keys and this is especially useful when selecting a slice of multiple keys (which you can also do with numeric indices):
+You can list more than one key or index inside brackets to select a slice of multiple values:
 
 ```elixir
 data = %{"user" => %{"name" => "Alice", "email" => "alice@example.com", "role" => "admin"}}
@@ -336,19 +333,20 @@ Enzyme.select(data, "products[*][?@.price <= 50].name")
 
 You can use the following operators to build filter expressions:
 
-| Operator | Description                                     |
-| -------- | ----------------------------------------------- |
-| `==`     | Equality (Erlang term comparison)               |
-| `!=`     | Inequality                                      |
-| `<`      | Less than                                       |
-| `<=`     | Less than or equal                              |
-| `>`      | Greater than                                    |
-| `>=`     | Greater than or equal                           |
-| `~~`     | String equality (converts both sides to string) |
-| `!~`     | String inequality                               |
-| not      | Logical NOT                                     |
-| and      | Logical AND                                     |
-| or       | Logical OR                                      |
+| Operator/Syntax | Description                                     |
+| --------------- | ----------------------------------------------- |
+| `==`            | Equality (Erlang term comparison)               |
+| `!=`            | Inequality                                      |
+| `<`             | Less than                                       |
+| `<=`            | Less than or equal                              |
+| `>`             | Greater than                                    |
+| `>=`            | Greater than or equal                           |
+| `~~`            | String equality (converts both sides to string) |
+| `!~`            | String inequality                               |
+| `not`           | Logical NOT                                     |
+| `and`           | Logical AND                                     |
+| `or`            | Logical OR                                      |
+| `func(args...)` | Function call (custom logic passed via opts)    |
 
 The `~~` and `!~` operators convert their operands to strings using `to_string/1` before comparison and come in handy when working with heterogeneous data (but see the section on isomorphisms for a more type-safe approach).
 
@@ -554,170 +552,73 @@ Enzyme.select(data, "items[*][?@.price::cents == 15.99]", cents: cents_iso)
 # => [%{"price" => 1599}]
 ```
 
-### Prisms
+#### Function Calls in Filters
 
-Prisms let you work with tagged tuples (or, "sum types") like `{:ok, value}` or `{:error, reason}`. They match tuples by their tag and/or shape and can extract values from specific positions. You can even convert matching tuples into different tuple shapes, or replace elements. Non-matching tuples return `nil` on select or pass through unchanged on transform.
-
-```elixir
-# Extract value from {:ok, value} tuples. The named variable `v` indicates
-# the position to extract.
-Enzyme.select({:ok, 42}, ":{:ok, v}")
-# => 42
-
-Enzyme.select({:error, "oops"}, ":{:ok, v}")
-# => nil
-
-# Process a list of results, filtering out the successful ones
-results = [{:ok, 1}, {:error, "failed"}, {:ok, 2}, {:error, "timeout"}]
-
-Enzyme.select(results, "[*]:{:ok, v}")
-# => [1, 2]
-
-# Extract error reasons
-Enzyme.select(results, "[*]:{:error, reason}")
-# => ["failed", "timeout"]
-```
-
-#### Multiple Value Extraction
-
-Extract multiple values from larger tuples:
+Inject custom logic into filter expressions using function calls. Functions are passed via opts (like isos):
 
 ```elixir
-# Extract both width and height as a tuple
-Enzyme.select({:rectangle, 3, 4}, ":{:rectangle, w, h}")
-# => {3, 4}
+# Pattern matching
+data = [
+  %{"status" => {:confirmed, "A123"}},
+  %{"status" => {:pending, "B456"}}
+]
 
-# Extract only specific positions using _ to ignore
-Enzyme.select({:rectangle, 3, 4}, ":{:rectangle, _, h}")
-# => 4
+confirmed? = fn
+  {:confirmed, _} -> true
+  _ -> false
+end
 
-Enzyme.select({:point3d, 1, 2, 3}, ":{:point3d, x, _, z}")
-# => {1, 3}
+Enzyme.select(data, "[*][?confirmed?(@.status)]", confirmed?: confirmed?)
+# => [%{"status" => {:confirmed, "A123"}}]
+
+# Calculations
+data = [
+  %{"items" => [%{"price" => 10}, %{"price" => 20}]},
+  %{"items" => [%{"price" => 5}]}
+]
+
+total = fn items -> Enum.reduce(items, 0, fn item, acc -> acc + item["price"] end) end
+
+Enzyme.select(data, "[*][?total(@.items) > 15]", total: total)
+# => [%{"items" => [%{"price" => 10}, %{"price" => 20}]}]
+
+# Multiple arguments
+data = [%{"value" => 50}, %{"value" => 150}]
+
+in_range? = fn value, min, max -> value >= min and value <= max end
+
+Enzyme.select(data, "[*][?in_range?(@.value, 0, 100)]", in_range?: in_range?)
+# => [%{"value" => 50}]
+
+# With isos
+data = [%{"count" => "42"}, %{"count" => "7"}]
+
+even? = fn x -> rem(x, 2) == 0 end
+
+Enzyme.select(data, "[*][?even?(@.count::integer)]", even?: even?)
+# => [%{"count" => "42"}]
+
+# Zero-arity functions
+data = [
+  %{"created" => ~D[2024-01-01]},
+  %{"created" => ~D[2024-12-01]}
+]
+
+Enzyme.select(
+  data,
+  "[*][?@.created > cutoff()]",
+  cutoff: fn -> ~D[2024-06-01] end
+)
+# => [%{"created" => ~D[2024-12-01]}]
 ```
 
-#### Rest Pattern
+Functions can:
 
-Use `...` to extract all elements after the tag without specifying each position or how many there are:
-
-```elixir
-Enzyme.select({:ok, 42}, ":{:ok, ...}")
-# => 42
-
-Enzyme.select({:data, 1, 2, 3, 4}, ":{:data, ...}")
-# => {1, 2, 3, 4}
-```
-
-Prisms only support a single rest pattern at the end of the tuple so something like `{:data, ..., x}` or `{:data, x, ...}` is not allowed.
-
-#### Filter-Only Prisms
-
-Use all `_` to match without extracting. This is useful when yoy are only interested in the shape of the tuplem, or only need to extract certain values:
-
-```elixir
-results = [{:ok, 1}, {:error, "x"}, {:ok, 2}]
-
-# Filter to only :ok tuples
-Enzyme.select(results, "[*]:{:ok, _}")
-# => [{:ok, 1}, {:ok, 2}]
-```
-
-#### Transforming with Prisms
-
-Prisms let you transform values inside matching tuples before passing them on through the lens chain:
-
-```elixir
-# Double the value inside :ok tuples
-Enzyme.transform({:ok, 5}, ":{:ok, v}", &(&1 * 2))
-# => {:ok, 10}
-
-# Non-matching tuples pass through unchanged
-Enzyme.transform({:error, "x"}, ":{:ok, v}", &(&1 * 2))
-# => {:error, "x"}
-
-# Transform in a list
-results = [{:ok, 1}, {:error, "x"}, {:ok, 2}]
-Enzyme.transform(results, "[*]:{:ok, v}", &(&1 * 10))
-# => [{:ok, 10}, {:error, "x"}, {:ok, 20}]
-```
-
-#### Prisms in Complex Paths
-
-You can combine prisms with other path components:
-
-```elixir
-data = %{
-  "responses" => [
-    {:ok, %{"user" => %{"name" => "Alice"}}},
-    {:error, "not found"},
-    {:ok, %{"user" => %{"name" => "Bob"}}}
-  ]
-}
-
-# Extract names from successful responses only
-Enzyme.select(data, "responses[*]:{:ok, v}.user.name")
-# => ["Alice", "Bob"]
-```
-
-#### Retagging Prisms
-
-Prisms also support retagging to transform sum types by changing tags or reassembling extracted values using the `->` arrow syntax.
-
-**Shorthand retagging (tag-only change):**
-
-```elixir
-# Change :ok to :success
-Enzyme.select({:ok, 42}, ":{:ok, v} -> :success")
-# => {:success, 42}
-
-# Transform and retag
-Enzyme.transform({:ok, 5}, ":{:ok, v} -> :success", &(&1 * 2))
-# => {:success, 10}
-
-# Retag in lists
-results = [{:ok, 1}, {:error, "x"}, {:ok, 2}]
-Enzyme.select(results, "[*]:{:ok, v} -> :success")
-# => [{:success, 1}, {:success, 2}]
-
-# Retag filter-only (all positions ignored)
-Enzyme.select({:ok, 42}, ":{:ok, _} -> :success")
-# => {:success, 42}
-
-# Retag with rest pattern
-Enzyme.select({:data, 1, 2, 3}, ":{:data, ...} -> :values")
-# => {:values, 1, 2, 3}
-```
-
-#### Reassembling Prism
-
-Prisms can also reassemble extracted values into new tuple shapes.
-
-```elixir
-# Reorder values
-Enzyme.select({:pair, 1, 2}, ":{:pair, a, b} -> :{:swapped, b, a}")
-# => {:swapped, 2, 1}
-
-# Drop a dimension (3D -> 2D)
-Enzyme.select({:point3d, 1, 2, 3}, ":{:point3d, x, y, z} -> :{:point2d, x, z}")
-# => {:point2d, 1, 3}
-
-# Duplicate a value
-Enzyme.select({:single, 42}, ":{:single, v} -> :{:double, v, v}")
-# => {:double, 42, 42}
-
-# Extract non-contiguous positions and reorder
-Enzyme.select({:quad, 1, 2, 3, 4}, ":{:quad, a, _, c, _} -> :{:pair, c, a}")
-# => {:pair, 3, 1}
-
-# Transform with assembly
-Enzyme.transform({:point3d, 0, 0, 0}, ":{:point3d, x, y, z} -> :{:point2d, x, z}", fn {x, z} -> {x + 1, z + 1} end)
-# => {:point2d, 1, 1}
-```
-
-**Use cases:**
-
-- Normalize API response types (e.g., `:ok`/`:error` → `:success`/`:failure`)
-- Simplify data structures (drop unnecessary dimensions)
-- Adapt between different sum type conventions across system boundaries
+- Take any number of arguments (including zero)
+- Receive field values, literals, and iso-transformed values
+- Return any value usable in comparisons
+- Be used standalone (boolean) or in comparisons
+- Be combined with logical operators (`and`, `or`, `not`)
 
 ### Isomorphisms (Isos)
 
@@ -848,31 +749,6 @@ Enzyme.transform(data, "users[*].score::integer", &(&1 + 10), [])
 # => %{"users" => [%{"name" => "Alice", "score" => "95"}, %{"name" => "Bob", "score" => "102"}]}
 ```
 
-## Transforming Data
-
-Use `Enzyme.transform/3` to update values while preserving structure:
-
-```elixir
-data = %{
-  "users" => [
-    %{"name" => "alice", "score" => 85},
-    %{"name" => "bob", "score" => 92}
-  ]
-}
-
-# Transform with a function
-Enzyme.transform(data, "users[*].name", &String.capitalize/1)
-# => %{"users" => [%{"name" => "Alice", ...}, %{"name" => "Bob", ...}]}
-
-# Transform with a constant value
-Enzyme.transform(data, "users[*].score", 0)
-# => %{"users" => [%{"name" => "alice", "score" => 0}, ...]}
-
-# Transform only matching elements
-Enzyme.transform(data, "users[*][?@.score == 85].score", fn s -> s + 10 end)
-# => %{"users" => [%{"name" => "alice", "score" => 95}, %{"name" => "bob", "score" => 92}]}
-```
-
 ## Reusable Lenses
 
 Create lens objects to avoid repeated parsing:
@@ -895,77 +771,31 @@ upcase_names.(data)
 # => %{"users" => [%{"name" => "ALICE", ...}, ...]}
 ```
 
-## Working with JSON
-
-Enzyme is particularly useful for working with parsed JSON:
-
-```elixir
-json = """
-{
-  "company": "Acme Corp",
-  "departments": [
-    {
-      "name": "Engineering",
-      "employees": [
-        {"name": "Alice", "title": "Senior Engineer"},
-        {"name": "Bob", "title": "Junior Engineer"}
-      ]
-    },
-    {
-      "name": "Sales",
-      "employees": [
-        {"name": "Charlie", "title": "Sales Manager"}
-      ]
-    }
-  ]
-}
-"""
-
-data = Jason.decode!(json)
-
-# Get all employee names across all departments
-Enzyme.select(data, "departments[*].employees[*].name")
-# => ["Alice", "Bob", "Charlie"]
-
-# Get employees from Engineering only
-Enzyme.select(data, "departments[*][?@.name == 'Engineering'].employees[*].name")
-# => ["Alice", "Bob"]
-
-# Update all titles
-Enzyme.transform(data, "departments[*].employees[*].title", &String.upcase/1)
-```
-
 ## Path Syntax Reference
 
-| Syntax          | Description                           | Example                                     |
-| --------------- | ------------------------------------- | ------------------------------------------- |
-| `key`           | Map string key                        | `name`, `user.email`                        |
-| `.`             | String key separator                  | `user.name` (both string keys)              |
-| `:`             | Atom key separator                    | `:user:name`, `config:debug`                |
-| `[n]`           | List index                            | `items[0]`, `users[2]`                      |
-| `[n,m,...]`     | Multiple indices                      | `items[0,2,4]`                              |
-| `[*]`           | All elements                          | `users[*]`                                  |
-| `[key]`         | String key in brackets                | `user[name]`                                |
-| `[a,b,...]`     | Multiple string keys                  | `user[name,email]`                          |
-| `[:atom]`       | Atom key in brackets                  | `data[:key]`                                |
-| `[:a,:b]`       | Multiple atom keys                    | `data[:foo,:bar]`                           |
-| `[?expr]`       | Filter expression                     | `users[*][?@.active == true]`               |
-| `[?@.a.b]`      | Filter with chained string fields     | `[?@.user.profile.verified == true]`        |
-| `[?@:a:b]`      | Filter with chained atom fields       | `[?@:config:database:host == 'localhost']`  |
-| `[?@.a:b.c]`    | Filter with mixed field chain         | `[?@.data:user.name == 'Alice']`            |
-| `[?a and b]`    | Filter with logical AND               | `[?@.active == true and @.role == 'admin']` |
-| `[?a or b]`     | Filter with logical OR                | `[?@.role == 'admin' or @.role == 'user']`  |
-| `[?not expr]`   | Filter with logical NOT               | `[?not @.deleted == true]`                  |
-| `[?(expr)]`     | Filter with grouping                  | `[?( @.a == 1 or @.b == 2) and @.c == 3]`   |
-| `[?f::iso==v]`  | Filter with iso (either/both sides)   | `[?@.count::integer == '42'::integer]`      |
-| `:{:tag, a, b}` | Prism (extract named positions)       | `:{:ok, v}`, `:{:rect, w, h}`               |
-| `:{:tag, _, b}` | Prism (ignore positions with `_`)     | `:{:rectangle, _, h}`                       |
-| `:{:tag, ...}`  | Prism (extract all after tag)         | `:{:ok, ...}`                               |
-| `:{:tag, _}`    | Prism (filter only, no extraction)    | `:{:ok, _}`                                 |
-| `:{ } -> :tag`  | Prism retag (shorthand)               | `:{:ok, v} -> :success`                     |
-| `:{ } -> :{ }`  | Prism retag (explicit assembly)       | `:{:point3d, x, y, z} -> :{:point2d, x, z}` |
-| `key::iso`      | Isomorphism (bidirectional transform) | `count::integer`, `data::base64`            |
-| `::iso1::iso2`  | Chained isos                          | `value::base64::json`                       |
+| Syntax         | Description                           | Example                                     |
+| -------------- | ------------------------------------- | ------------------------------------------- |
+| `key`          | Map string key                        | `name`, `user.email`                        |
+| `.`            | String key separator                  | `user.name` (both string keys)              |
+| `:`            | Atom key separator                    | `:user:name`, `config:debug`                |
+| `[n]`          | List index                            | `items[0]`, `users[2]`                      |
+| `[n,m,...]`    | Multiple indices                      | `items[0,2,4]`                              |
+| `[*]`          | All elements                          | `users[*]`                                  |
+| `[key]`        | String key in brackets                | `user[name]`                                |
+| `[a,b,...]`    | Multiple string keys                  | `user[name,email]`                          |
+| `[:atom]`      | Atom key in brackets                  | `data[:key]`                                |
+| `[:a,:b]`      | Multiple atom keys                    | `data[:foo,:bar]`                           |
+| `[?expr]`      | Filter expression                     | `users[*][?@.active == true]`               |
+| `[?@.a.b]`     | Filter with chained string fields     | `[?@.user.profile.verified == true]`        |
+| `[?@:a:b]`     | Filter with chained atom fields       | `[?@:config:database:host == 'localhost']`  |
+| `[?@.a:b.c]`   | Filter with mixed field chain         | `[?@.data:user.name == 'Alice']`            |
+| `[?a and b]`   | Filter with logical AND               | `[?@.active == true and @.role == 'admin']` |
+| `[?a or b]`    | Filter with logical OR                | `[?@.role == 'admin' or @.role == 'user']`  |
+| `[?not expr]`  | Filter with logical NOT               | `[?not @.deleted == true]`                  |
+| `[?(expr)]`    | Filter with grouping                  | `[?( @.a == 1 or @.b == 2) and @.c == 3]`   |
+| `[?f::iso==v]` | Filter with iso (either/both sides)   | `[?@.count::integer == '42'::integer]`      |
+| `key::iso`     | Isomorphism (bidirectional transform) | `count::integer`, `data::base64`            |
+| `::iso1::iso2` | Chained isos                          | `value::base64::json`                       |
 
 ## License
 

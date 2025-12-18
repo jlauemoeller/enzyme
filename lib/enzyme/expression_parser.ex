@@ -7,8 +7,10 @@ defmodule Enzyme.ExpressionParser do
   # - or_expr := and_expr ('or' and_expr)*
   # - and_expr := not_expr ('and' not_expr)*
   # - not_expr := 'not' not_expr | primary
-  # - primary := '(' expression ')' | comparison
+  # - primary := '(' expression ')' | comparison | function_call
   # - comparison := operand cmp_operator operand
+  # - function_call := identifier '(' argument_list? ')'
+  # - argument_list := operand (',' operand)*
   # - operand := ('@' | field | literal) iso_chain?
   # - field := '@.' field_chain | '@:' field_chain
   # - field_chain := identifier ('.' identifier | ':' identifier)*
@@ -193,25 +195,28 @@ defmodule Enzyme.ExpressionParser do
   @doc """
   Compiles an Expression into a predicate function.
 
+  The compiled function takes two arguments: element and opts.
+  Opts are needed for runtime function resolution.
+
   ## Examples
 
       iex> expr = Enzyme.ExpressionParser.parse("@.name == 'test'")
       iex> pred = Enzyme.ExpressionParser.compile(expr)
-      iex> pred.(%{"name" => "test"})
+      iex> pred.(%{"name" => "test"}, [])
       true
-      iex> pred.(%{"name" => "other"})
+      iex> pred.(%{"name" => "other"}, [])
       false
 
   """
   # Compile logical NOT
   def compile(%Expression{left: nil, operator: :not, right: %Expression{} = right}) do
     right_pred = compile(right)
-    fn element -> not right_pred.(element) end
+    fn element, opts -> not right_pred.(element, opts) end
   end
 
   # Compile unary NOT on operand
   def compile(%Expression{left: nil, operator: :not, right: right}) do
-    fn element -> not resolve_operand(right, element) end
+    fn element, opts -> not resolve_operand(right, element, opts) end
   end
 
   # Compile logical AND
@@ -222,7 +227,7 @@ defmodule Enzyme.ExpressionParser do
       }) do
     left_pred = compile(left)
     right_pred = compile(right)
-    fn element -> left_pred.(element) and right_pred.(element) end
+    fn element, opts -> left_pred.(element, opts) and right_pred.(element, opts) end
   end
 
   # Compile logical OR
@@ -233,22 +238,22 @@ defmodule Enzyme.ExpressionParser do
       }) do
     left_pred = compile(left)
     right_pred = compile(right)
-    fn element -> left_pred.(element) or right_pred.(element) end
+    fn element, opts -> left_pred.(element, opts) or right_pred.(element, opts) end
   end
 
   # Compile :get operator (truthiness check)
   def compile(%Expression{left: operand, operator: :get, right: nil}) do
-    fn element ->
-      value = resolve_operand(operand, element)
+    fn element, opts ->
+      value = resolve_operand(operand, element, opts)
       truthy?(value)
     end
   end
 
   # Compile comparison expression
   def compile(%Expression{left: left, operator: op, right: right}) do
-    fn element ->
-      left_val = resolve_operand(left, element)
-      right_val = resolve_operand(right, element)
+    fn element, opts ->
+      left_val = resolve_operand(left, element, opts)
+      right_val = resolve_operand(right, element, opts)
       apply_operator(op, left_val, right_val)
     end
   end
@@ -279,7 +284,34 @@ defmodule Enzyme.ExpressionParser do
   defp operand_has_isos?({:field_with_isos, _name, _isos}), do: true
   defp operand_has_isos?({:self_with_isos, _isos}), do: true
   defp operand_has_isos?({:literal_with_isos, _value, _isos}), do: true
+  defp operand_has_isos?({:function_call, _name, args}), do: Enum.any?(args, &operand_has_isos?/1)
   defp operand_has_isos?(_), do: false
+
+  @doc """
+  Returns true if the expression contains any function calls.
+  """
+  # Logical NOT
+  def has_function_calls?(%Expression{left: nil, operator: :not, right: right}) do
+    has_function_calls?(right)
+  end
+
+  # Logical AND/OR
+  def has_function_calls?(%Expression{
+        left: %Expression{} = left,
+        operator: op,
+        right: %Expression{} = right
+      })
+      when op in [:and, :or] do
+    has_function_calls?(left) or has_function_calls?(right)
+  end
+
+  # Comparison
+  def has_function_calls?(%Expression{left: left, right: right}) do
+    operand_has_function_call?(left) or operand_has_function_call?(right)
+  end
+
+  defp operand_has_function_call?({:function_call, _name, _args}), do: true
+  defp operand_has_function_call?(_), do: false
 
   @doc """
   Returns true if the expression contains any unresolved isos.
@@ -356,6 +388,10 @@ defmodule Enzyme.ExpressionParser do
 
   defp resolve_operand_isos({:literal_with_isos, value, isos}, opts) do
     {:literal_with_isos, value, resolve_iso_list(isos, opts)}
+  end
+
+  defp resolve_operand_isos({:function_call, name, args}, opts) do
+    {:function_call, name, Enum.map(args, &resolve_operand_isos(&1, opts))}
   end
 
   defp resolve_operand_isos(operand, _opts), do: operand
@@ -476,8 +512,70 @@ defmodule Enzyme.ExpressionParser do
     parse_number(input, opts)
   end
 
+  defp parse_operand(<<char, _::binary>> = input, opts)
+       when char in ?a..?z or char in ?A..?Z or char == ?_ or char == ?? or char == ?! do
+    # Could be a function call or would be parsed as field/literal
+    # Check if it's a function call (identifier followed by '(')
+    {name, rest} = parse_identifier(input)
+
+    case String.trim_leading(rest) do
+      "(" <> _ ->
+        # It's a function call
+        parse_function_call(name, rest, opts)
+
+      _ ->
+        # Not a function call - this would normally be an error in filter context
+        # since bare identifiers aren't valid (need @ prefix for fields)
+        raise "Expected operand but found identifier '#{name}'. " <>
+                "Did you mean '@.#{name}' or a function call '#{name}(...)'?"
+    end
+  end
+
   defp parse_operand(input, _opts) do
     raise "Expected operand but found: #{input}"
+  end
+
+  # Parse a function call: name '(' arguments ')'
+  defp parse_function_call(name, "(" <> rest, opts) do
+    # Parse argument list
+    {args, remaining} = parse_argument_list(String.trim_leading(rest), opts)
+
+    # Expect closing paren
+    case String.trim_leading(remaining) do
+      ")" <> final_rest ->
+        {{:function_call, String.to_atom(name), args}, final_rest}
+
+      _ ->
+        raise "Expected closing ')' after function arguments for '#{name}'"
+    end
+  end
+
+  # Parse argument list (comma-separated operands)
+  defp parse_argument_list(")" <> _ = input, _opts) do
+    # Empty argument list
+    {[], input}
+  end
+
+  defp parse_argument_list(input, opts) do
+    parse_arguments(input, [], opts)
+  end
+
+  defp parse_arguments(input, acc, opts) do
+    # Parse one operand
+    {arg, rest} = parse_operand(String.trim_leading(input), opts)
+
+    case String.trim_leading(rest) do
+      "," <> more ->
+        # More arguments
+        parse_arguments(String.trim_leading(more), [arg | acc], opts)
+
+      ")" <> _ = final ->
+        # End of arguments
+        {Enum.reverse([arg | acc]), final}
+
+      other ->
+        raise "Expected ',' or ')' after function argument, got: #{inspect(String.slice(other, 0, 10))}"
+    end
   end
 
   # Parse a chain of ::iso references
@@ -574,7 +672,8 @@ defmodule Enzyme.ExpressionParser do
   defp consume_identifier("", acc), do: {acc |> Enum.reverse() |> IO.iodata_to_binary(), ""}
 
   defp consume_identifier(<<char, rest::binary>>, acc)
-       when char in ?a..?z or char in ?A..?Z or char in ?0..?9 or char == ?_ do
+       when char in ?a..?z or char in ?A..?Z or char in ?0..?9 or char == ?_ or char == ?? or
+              char == ?! do
     consume_identifier(rest, [char | acc])
   end
 
@@ -620,25 +719,53 @@ defmodule Enzyme.ExpressionParser do
   end
 
   # Resolve an operand value against an element
-  defp resolve_operand({:self}, element), do: element
+  defp resolve_operand({:self}, element, _opts), do: element
 
-  defp resolve_operand({:self_with_isos, isos}, element) do
+  defp resolve_operand({:self_with_isos, isos}, element, _opts) do
     apply_isos(element, isos)
   end
 
-  defp resolve_operand({:field, names}, element) when is_list(names) do
+  defp resolve_operand({:field, names}, element, _opts) when is_list(names) do
     resolve_field_chain(names, element)
   end
 
-  defp resolve_operand({:field_with_isos, names, isos}, element) when is_list(names) do
+  defp resolve_operand({:field_with_isos, names, isos}, element, _opts) when is_list(names) do
     value = resolve_field_chain(names, element)
     apply_isos(value, isos)
   end
 
-  defp resolve_operand({:literal, value}, _element), do: value
+  defp resolve_operand({:literal, value}, _element, _opts), do: value
 
-  defp resolve_operand({:literal_with_isos, value, isos}, _element) do
+  defp resolve_operand({:literal_with_isos, value, isos}, _element, _opts) do
     apply_isos(value, isos)
+  end
+
+  defp resolve_operand({:function_call, name, args}, element, opts) do
+    # Resolve function from opts
+    func = resolve_function(name, opts)
+
+    # Evaluate all arguments
+    arg_values = Enum.map(args, &resolve_operand(&1, element, opts))
+
+    # Call function with evaluated arguments
+    apply(func, arg_values)
+  end
+
+  # Resolve a function from opts
+  defp resolve_function(name, opts) do
+    case Keyword.get(opts, name) do
+      func when is_function(func) ->
+        func
+
+      nil ->
+        raise ArgumentError,
+              "Function '#{name}' not provided. " <>
+                "Pass it via opts: #{name}: fn ... end"
+
+      other ->
+        raise ArgumentError,
+              "Expected function for '#{name}', got: #{inspect(other)}"
+    end
   end
 
   # Recursively resolve a chain of field accesses
