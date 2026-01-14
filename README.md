@@ -8,6 +8,28 @@ A powerful Elixir library for digesting, querying, and transforming deeply neste
 
 Enzyme lets you precisely locate and transform data deep within Elixir data structures using an intuitive path syntax. Rather than manually traversing nested maps and lists, you can extract or modify specific values with indexing, slicing, wildcards, and filters. The library even converts data between different representations on the fly making it ideal for processing JSON API responses, configuration files, or working with complex text fixtures. Enzyme implements functional lenses under the hood, but no lens theory knowledge is required to use it effectively.
 
+## Features
+
+- **Path-based or programmatic construction**: Lenses can be constructed either from string paths or programmatically. Paths can include slices, wildcards, filters, and isomorphisms. In most cases, the path syntax is more concise and easier to read but programmatic construction is available for dynamic scenarios and for when you need filters that cannot be expressed in the path syntax.
+- **Filter expressions**: The lens focus can be fine tuned using filter expressions with logical operators and comparison operators. Isomorphisms can be applied within filters for type-safe comparisons.
+- **Extensible Isomorphisms**: Lenses can use bidirectional transformations (isomorphisms) for viewing or transforming data through a conversion layer. You can use built-in isos or define arbitrarily complex custom ones.
+- **Composable**: Lenses can be composed together to create complex queries and transformations from smaller reusable parts.
+- **Reusable**: Create reusable lens objects or selector/transformer functions for repeated use. This improves performance by avoiding repeated parsing of path strings.
+- **Efficient**: Designed for performance with minimal overhead. The parser is a fast recursive descent parser, and lens operations are optimized for common use cases.
+- **Works with JSON**: Ideal for querying and transforming parsed JSON data structures. The built-in `json` isomorphism makes it easy to work with JSON strings and becomes active if the Jason library is available.
+
+## Installation
+
+Add `enzyme` to your list of dependencies in `mix.exs`:
+
+```elixir
+def deps do
+  [
+    {:enzyme, "~> 0.4.0"}
+  ]
+end
+```
+
 ## Example
 
 Imagine you're working with an e-commerce API that returns product data with prices stored as Euro cent strings and timestamps in ISO8601 format:
@@ -188,28 +210,6 @@ applied, with markers indicating events:
 - `!` indicates an abrupt end of the trace, such as an exception
 
 The `single` and `many` markers indicate whether the focus is on a single value or multiple values at that point in the path.
-
-## Features
-
-- **Path-based or programmatic construction**: Lenses can be constructed either from string paths or programmatically. Paths can include slices, wildcards, filters, and isomorphisms. In most cases, the path syntax is more concise and easier to read but programmatic construction is available for dynamic scenarios and for when you need filters that cannot be expressed in the path syntax.
-- **Filter expressions**: The lens focus can be fine tuned using filter expressions with logical operators and comparison operators. Isomorphisms can be applied within filters for type-safe comparisons.
-- **Extensible Isomorphisms**: Lenses can use bidirectional transformations (isomorphisms) for viewing or transforming data through a conversion layer. You can use built-in isos or define arbitrarily complex custom ones.
-- **Composable**: Lenses can be composed together to create complex queries and transformations from smaller reusable parts.
-- **Reusable**: Create reusable lens objects or selector/transformer functions for repeated use. This improves performance by avoiding repeated parsing of path strings.
-- **Efficient**: Designed for performance with minimal overhead. The parser is a fast recursive descent parser, and lens operations are optimized for common use cases.
-- **Works with JSON**: Ideal for querying and transforming parsed JSON data structures. The built-in `json` isomorphism makes it easy to work with JSON strings and becomes active if the Jason library is available.
-
-## Installation
-
-Add `enzyme` to your list of dependencies in `mix.exs`:
-
-```elixir
-def deps do
-  [
-    {:enzyme, "~> 0.4.0"}
-  ]
-end
-```
 
 ## Path Syntax
 
